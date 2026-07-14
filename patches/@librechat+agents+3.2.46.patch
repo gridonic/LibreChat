@@ -1,0 +1,96 @@
+diff --git a/node_modules/@librechat/agents/dist/cjs/graphs/Graph.cjs b/node_modules/@librechat/agents/dist/cjs/graphs/Graph.cjs
+index 20c9c90..a480522 100644
+--- a/node_modules/@librechat/agents/dist/cjs/graphs/Graph.cjs
++++ b/node_modules/@librechat/agents/dist/cjs/graphs/Graph.cjs
+@@ -242,6 +242,9 @@ var Graph = class {
+ 	/** Set of invoked tool call IDs from non-message run steps completed mid-run, if any */
+ 	invokedToolIds;
+ 	handlerRegistry;
++	/** Host handler registry carried through isolated child graphs solely so
++	* deeper subagents can forward event-driven tool execution. */
++	parentToolHandlerRegistry;
+ 	/**
+ 	* True when event-driven tool execution can be routed through callbacks even
+ 	* though this graph intentionally does not own the full handler registry.
+@@ -1221,7 +1224,7 @@ var StandardGraph = class StandardGraph extends Graph {
+ 		if (agentContext.subagentConfigs != null && agentContext.subagentConfigs.length > 0 && effectiveSubagentDepth > 0) {
+ 			const resolvedConfigs = require_SubagentExecutor.resolveSubagentConfigs(agentContext.subagentConfigs, agentContext);
+ 			if (resolvedConfigs.length > 0) {
+-				const getParentHandlerRegistry = () => this.handlerRegistry;
++				const getParentHandlerRegistry = () => this.handlerRegistry ?? this.parentToolHandlerRegistry;
+ 				const executor = new require_SubagentExecutor.SubagentExecutor({
+ 					configs: new Map(resolvedConfigs.map((c) => [c.type, c])),
+ 					parentSignal: this.signal,
+@@ -1238,6 +1241,7 @@ var StandardGraph = class StandardGraph extends Graph {
+ 					maxDepth: effectiveSubagentDepth,
+ 					createChildGraph: (input) => {
+ 						const childGraph = new StandardGraph(input);
++						const toolHandlerRegistry = this.handlerRegistry ?? this.parentToolHandlerRegistry;
+ 						childGraph.hookRegistry = this.hookRegistry;
+ 						/**
+ 						* Do not propagate `humanInTheLoop` into the child graph yet:
+@@ -1248,7 +1252,8 @@ var StandardGraph = class StandardGraph extends Graph {
+ 						childGraph.toolOutputReferences = this.toolOutputReferences;
+ 						childGraph.eagerEventToolExecution = this.eagerEventToolExecution;
+ 						childGraph.toolExecution = this.toolExecution;
+-						childGraph.eventToolExecutionAvailable = this.handlerRegistry?.getHandler("on_tool_execute") != null;
++						childGraph.parentToolHandlerRegistry = toolHandlerRegistry;
++						childGraph.eventToolExecutionAvailable = toolHandlerRegistry?.getHandler("on_tool_execute") != null;
+ 						return childGraph;
+ 					}
+ 				});
+diff --git a/node_modules/@librechat/agents/dist/esm/graphs/Graph.mjs b/node_modules/@librechat/agents/dist/esm/graphs/Graph.mjs
+index dd715b5..6d92e93 100644
+--- a/node_modules/@librechat/agents/dist/esm/graphs/Graph.mjs
++++ b/node_modules/@librechat/agents/dist/esm/graphs/Graph.mjs
+@@ -242,6 +242,9 @@ var Graph = class {
+ 	/** Set of invoked tool call IDs from non-message run steps completed mid-run, if any */
+ 	invokedToolIds;
+ 	handlerRegistry;
++	/** Host handler registry carried through isolated child graphs solely so
++	* deeper subagents can forward event-driven tool execution. */
++	parentToolHandlerRegistry;
+ 	/**
+ 	* True when event-driven tool execution can be routed through callbacks even
+ 	* though this graph intentionally does not own the full handler registry.
+@@ -1221,7 +1224,7 @@ var StandardGraph = class StandardGraph extends Graph {
+ 		if (agentContext.subagentConfigs != null && agentContext.subagentConfigs.length > 0 && effectiveSubagentDepth > 0) {
+ 			const resolvedConfigs = resolveSubagentConfigs(agentContext.subagentConfigs, agentContext);
+ 			if (resolvedConfigs.length > 0) {
+-				const getParentHandlerRegistry = () => this.handlerRegistry;
++				const getParentHandlerRegistry = () => this.handlerRegistry ?? this.parentToolHandlerRegistry;
+ 				const executor = new SubagentExecutor({
+ 					configs: new Map(resolvedConfigs.map((c) => [c.type, c])),
+ 					parentSignal: this.signal,
+@@ -1238,6 +1241,7 @@ var StandardGraph = class StandardGraph extends Graph {
+ 					maxDepth: effectiveSubagentDepth,
+ 					createChildGraph: (input) => {
+ 						const childGraph = new StandardGraph(input);
++						const toolHandlerRegistry = this.handlerRegistry ?? this.parentToolHandlerRegistry;
+ 						childGraph.hookRegistry = this.hookRegistry;
+ 						/**
+ 						* Do not propagate `humanInTheLoop` into the child graph yet:
+@@ -1248,7 +1252,8 @@ var StandardGraph = class StandardGraph extends Graph {
+ 						childGraph.toolOutputReferences = this.toolOutputReferences;
+ 						childGraph.eagerEventToolExecution = this.eagerEventToolExecution;
+ 						childGraph.toolExecution = this.toolExecution;
+-						childGraph.eventToolExecutionAvailable = this.handlerRegistry?.getHandler("on_tool_execute") != null;
++						childGraph.parentToolHandlerRegistry = toolHandlerRegistry;
++						childGraph.eventToolExecutionAvailable = toolHandlerRegistry?.getHandler("on_tool_execute") != null;
+ 						return childGraph;
+ 					}
+ 				});
+diff --git a/node_modules/@librechat/agents/dist/types/graphs/Graph.d.ts b/node_modules/@librechat/agents/dist/types/graphs/Graph.d.ts
+index 058d1ad..3b8b90c 100644
+--- a/node_modules/@librechat/agents/dist/types/graphs/Graph.d.ts
++++ b/node_modules/@librechat/agents/dist/types/graphs/Graph.d.ts
+@@ -49,6 +49,9 @@ export declare abstract class Graph<T extends t.BaseGraphState = t.BaseGraphStat
+     /** Set of invoked tool call IDs from non-message run steps completed mid-run, if any */
+     invokedToolIds?: Set<string>;
+     handlerRegistry: HandlerRegistry | undefined;
++    /** Host handler registry carried through isolated child graphs solely so
++     * deeper subagents can forward event-driven tool execution. */
++    parentToolHandlerRegistry: HandlerRegistry | undefined;
+     /**
+      * True when event-driven tool execution can be routed through callbacks even
+      * though this graph intentionally does not own the full handler registry.
