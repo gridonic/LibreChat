@@ -1119,6 +1119,19 @@ export async function createRun({
     );
     if (subagentConfigs.length > 0) {
       agentInput.subagentConfigs = subagentConfigs;
+      /**
+       * The agents SDK defaults an executor to one delegation level when
+       * `maxSubagentDepth` is absent. Nested configs are preserved by
+       * `allowNested`, but each spawn also decrements this countdown. Without
+       * an explicit root budget, an Engine -> Router spawn therefore gives the
+       * Router a budget of zero and its Specialist tool is never registered.
+       *
+       * The complete graph was already expanded and rejected above when it
+       * exceeded MAX_SUBAGENT_DEPTH, so give the root executor that same
+       * validated bound. Child executors receive a decremented value from the
+       * SDK's `buildChildInputs`; they do not reset to this maximum.
+       */
+      agentInput.maxSubagentDepth = MAX_SUBAGENT_DEPTH;
     }
     agentInputs.push(agentInput);
   }

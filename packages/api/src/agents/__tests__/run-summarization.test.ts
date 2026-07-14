@@ -69,7 +69,8 @@ jest.mock('@librechat/agents', () => {
   };
 });
 
-import { Run } from '@librechat/agents';
+import { Run, buildChildInputs } from '@librechat/agents';
+import type { SubagentConfig } from '@librechat/agents';
 
 /** Minimal RunAgent factory */
 function makeAgent(
@@ -1020,6 +1021,7 @@ describe('subagentConfigs', () => {
     });
 
     const routerConfig = (agents[0].subagentConfigs as Array<Record<string, unknown>>)[0];
+    expect(agents[0].maxSubagentDepth).toBe(MAX_SUBAGENT_DEPTH);
     expect(routerConfig).toMatchObject({
       type: 'agent_router',
       allowNested: true,
@@ -1033,6 +1035,17 @@ describe('subagentConfigs', () => {
       type: 'agent_leaf',
       allowNested: false,
     });
+
+    /** Exercise the SDK boundary too: the first spawn must retain the
+     * Router's child and leave it with a positive depth budget. */
+    const spawnedRouterInputs = buildChildInputs(
+      routerConfig as unknown as SubagentConfig,
+      'spawned_router',
+      agents[0].maxSubagentDepth as number,
+      true,
+    );
+    expect(spawnedRouterInputs.maxSubagentDepth).toBe(MAX_SUBAGENT_DEPTH - 1);
+    expect(spawnedRouterInputs.subagentConfigs).toHaveLength(1);
   });
 
   it('combines self-spawn and explicit subagents when both enabled', async () => {
