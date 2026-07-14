@@ -57,7 +57,10 @@ RUN \
     # React client build with configurable memory
     NODE_OPTIONS="--max-old-space-size=${NODE_MAX_OLD_SPACE_SIZE}" npm run frontend; \
     npm prune --production; \
-    npm cache clean --force
+    npm cache clean --force; \
+    # LibreChat deployments can run with a host UID that differs from the
+    # image's node user. Keep application files readable in that setup.
+    chmod -R a+rX /app
 
 # Optional build metadata surfaced in Settings -> About for support triage.
 # Declared here (after the heavy install/build steps) so that commit/date
