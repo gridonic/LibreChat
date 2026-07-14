@@ -997,6 +997,44 @@ describe('subagentConfigs', () => {
     expect(configs[0].self).toBeUndefined();
   });
 
+  it('preserves nested delegation for a router with explicit child agents', async () => {
+    const leaf = makeAgent({
+      id: 'agent_leaf',
+      name: 'Calendar Specialist',
+      description: 'Use the source-specific tool and return verified results.',
+    });
+    const router = makeAgent({
+      id: 'agent_router',
+      name: 'Workspace Router',
+      subagents: { enabled: true, allowSelf: false, agent_ids: ['agent_leaf'] },
+      subagentAgentConfigs: [leaf],
+    });
+
+    const agents = await callAndCapture({
+      agents: [
+        makeAgent({
+          subagents: { enabled: true, allowSelf: false, agent_ids: ['agent_router'] },
+          subagentAgentConfigs: [router],
+        }),
+      ],
+    });
+
+    const routerConfig = (agents[0].subagentConfigs as Array<Record<string, unknown>>)[0];
+    expect(routerConfig).toMatchObject({
+      type: 'agent_router',
+      allowNested: true,
+    });
+
+    const routerInputs = routerConfig.agentInputs as {
+      subagentConfigs?: Array<Record<string, unknown>>;
+    };
+    expect(routerInputs.subagentConfigs).toHaveLength(1);
+    expect(routerInputs.subagentConfigs?.[0]).toMatchObject({
+      type: 'agent_leaf',
+      allowNested: false,
+    });
+  });
+
   it('combines self-spawn and explicit subagents when both enabled', async () => {
     const child = makeAgent({ id: 'agent_child', name: 'Helper' });
     const agents = await callAndCapture({

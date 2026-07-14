@@ -843,6 +843,16 @@ function buildSubagentConfigs(
         child.description ??
         `Delegate a subtask to the ${child.name ?? child.id} agent in an isolated context.`,
       agentInputs: childInputs,
+      /**
+       * The SDK isolates spawned agents by default and strips their
+       * `subagentConfigs` unless the parent spawn config explicitly permits
+       * nesting. We already resolved and depth-checked the child's graph
+       * above, so preserve it whenever the child has reachable descendants.
+       * Without this flag, a configured Engine -> Router -> Specialist graph
+       * silently degrades at runtime: the Router is spawned without its
+       * Specialist tools even though the serialized inputs contain them.
+       */
+      allowNested: grandchildConfigs.length > 0,
     });
   }
 
