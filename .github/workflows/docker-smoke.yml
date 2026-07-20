@@ -55,9 +55,8 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Build the real production image (final `api-build` stage), which installs
-      # with `npm ci --omit=dev` — the same prune that, in prod, exposed runtime
-      # dependencies the tsdown bundle externalizes but were never declared.
+      # Build the real production image, including its pruned workspace
+      # dependency tree.
       - name: Build production image
         uses: docker/build-push-action@v5
         with:
@@ -70,14 +69,12 @@ jobs:
           cache-from: type=gha,scope=docker-smoke-api
           cache-to: type=gha,mode=max,scope=docker-smoke-api
 
-      # Loads the entire externalized require graph of the built @librechat/api
-      # bundle inside the pruned production image. A missing or ESM-incompatible
-      # runtime dependency (e.g. the `get-stream` regression) fails here with a
-      # non-zero exit — deterministically, with no database required.
+      # Resolve both root-hoisted and API-workspace dependencies from the same
+      # locations used by the production entrypoint before booting the server.
       - name: Verify production image resolves all runtime modules
         run: |
           docker run --rm librechat-api-smoke:ci \
-            node -e "require('@librechat/api'); require('@librechat/api/telemetry'); console.log('module resolution OK')"
+            node -e "const { createRequire } = require('node:module'); const apiRequire = createRequire('/app/api/server/index.js'); const schemaRequire = createRequire('/app/packages/data-schemas/dist/index.cjs'); apiRequire('compression'); schemaRequire('winston-daily-rotate-file'); require('@librechat/api'); require('@librechat/api/telemetry'); console.log('module resolution OK')"
 
       # Boot the real entrypoint against a real MongoDB so the *entire* server
       # require graph loads (api/db throws at module scope without MONGO_URI, and

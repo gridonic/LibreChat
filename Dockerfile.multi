@@ -92,6 +92,10 @@ COPY --chown=node:node packages/client/package.json ./packages/client/package.js
 COPY --chown=node:node packages/data-provider/package.json ./packages/data-provider/package.json
 COPY --chown=node:node packages/data-schemas/package.json ./packages/data-schemas/package.json
 COPY --from=production-dependencies --chown=node:node /app/node_modules ./node_modules
+# Preserve pruned dependencies that npm keeps inside individual workspaces when
+# their versions cannot be hoisted safely into the root dependency tree.
+COPY --from=production-dependencies --chown=node:node /app/api ./api
+COPY --from=production-dependencies --chown=node:node /app/packages ./packages
 
 COPY --chown=node:node api ./api
 COPY --chown=node:node config ./config
