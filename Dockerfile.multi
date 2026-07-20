@@ -1,129 +1,121 @@
-# Dockerfile.multi
-# v0.8.7
+# v0.8.7 production multi-stage image
 
-# Set configurable max-old-space-size with default
 ARG NODE_MAX_OLD_SPACE_SIZE=6144
 
-# Optional build metadata surfaced in Settings -> About for support triage.
-ARG BUILD_COMMIT=
-ARG BUILD_BRANCH=
-ARG BUILD_DATE=
-
-# Base for all builds
-FROM node:24.16.0-alpine AS base-min
+FROM node:24.16.0-alpine AS dependency-base
 ARG NPM_CI_TIMEOUT_SECONDS=1500
 ARG NPM_CI_ATTEMPTS=2
-RUN apk upgrade --no-cache
-RUN apk add --no-cache jemalloc
-# Set environment variable to use jemalloc
-ENV LD_PRELOAD=/usr/lib/libjemalloc.so.2
 
 WORKDIR /app
-RUN apk --no-cache add curl
+
 RUN npm config set fetch-retry-maxtimeout 600000 && \
     npm config set fetch-retries 5 && \
     npm config set fetch-retry-mintimeout 15000
-COPY package*.json ./
-COPY packages/data-provider/package*.json ./packages/data-provider/
-COPY packages/api/package*.json ./packages/api/
-COPY packages/data-schemas/package*.json ./packages/data-schemas/
-COPY packages/client/package*.json ./packages/client/
-COPY client/package*.json ./client/
-COPY api/package*.json ./api/
 
-# Install all dependencies for every build
-FROM base-min AS base
-ARG NPM_CI_TIMEOUT_SECONDS=1500
-ARG NPM_CI_ATTEMPTS=2
-WORKDIR /app
+COPY package.json package-lock.json ./
+COPY api/package.json ./api/package.json
+COPY client/package.json ./client/package.json
+COPY packages/api/package.json ./packages/api/package.json
+COPY packages/client/package.json ./packages/client/package.json
+COPY packages/data-provider/package.json ./packages/data-provider/package.json
+COPY packages/data-schemas/package.json ./packages/data-schemas/package.json
+COPY patches ./patches
+
+FROM dependency-base AS dependencies
 RUN attempt=1; \
-    until timeout "$NPM_CI_TIMEOUT_SECONDS" npm ci; do \
+    until timeout "$NPM_CI_TIMEOUT_SECONDS" npm ci --no-audit; do \
       status=$?; \
       if [ "$attempt" -ge "$NPM_CI_ATTEMPTS" ]; then \
         exit "$status"; \
       fi; \
-      echo "npm ci failed with exit code $status; retrying attempt $((attempt + 1))/$NPM_CI_ATTEMPTS"; \
+      echo "npm ci --no-audit failed with exit code $status; retrying attempt $((attempt + 1))/$NPM_CI_ATTEMPTS"; \
       attempt=$((attempt + 1)); \
       npm cache clean --force || true; \
       sleep 10; \
     done
 
-# Build `data-provider` package
-FROM base AS data-provider-build
+# Pruning in an intermediate stage preserves the patch-package result while
+# keeping deleted development dependencies out of the final image's layers.
+FROM dependencies AS production-dependencies
+RUN npm prune --omit=dev --ignore-scripts && npm cache clean --force
+
+FROM dependencies AS data-provider-build
 WORKDIR /app/packages/data-provider
 COPY packages/data-provider ./
 RUN npm run build
 
-# Build `data-schemas` package
-FROM base AS data-schemas-build
+FROM dependencies AS data-schemas-build
 WORKDIR /app/packages/data-schemas
 COPY packages/data-schemas ./
 COPY --from=data-provider-build /app/packages/data-provider/dist /app/packages/data-provider/dist
 RUN npm run build
 
-# Build `api` package
-FROM base AS api-package-build
+FROM dependencies AS api-package-build
 WORKDIR /app/packages/api
 COPY packages/api ./
 COPY --from=data-provider-build /app/packages/data-provider/dist /app/packages/data-provider/dist
 COPY --from=data-schemas-build /app/packages/data-schemas/dist /app/packages/data-schemas/dist
 RUN npm run build
 
-# Build `client` package
-FROM base AS client-package-build
+FROM dependencies AS client-package-build
 WORKDIR /app/packages/client
 COPY packages/client ./
 COPY --from=data-provider-build /app/packages/data-provider/dist /app/packages/data-provider/dist
 RUN npm run build
 
-# Client build
-FROM base AS client-build
+FROM dependencies AS client-build
+ARG NODE_MAX_OLD_SPACE_SIZE
+ENV NODE_OPTIONS="--max-old-space-size=${NODE_MAX_OLD_SPACE_SIZE}"
 WORKDIR /app/client
 COPY client ./
 COPY --from=data-provider-build /app/packages/data-provider/dist /app/packages/data-provider/dist
 COPY --from=client-package-build /app/packages/client/dist /app/packages/client/dist
 COPY --from=client-package-build /app/packages/client/src /app/packages/client/src
-ARG NODE_MAX_OLD_SPACE_SIZE
-ENV NODE_OPTIONS="--max-old-space-size=${NODE_MAX_OLD_SPACE_SIZE}"
 RUN npm run build
 
-# API setup (including client dist)
-FROM base-min AS api-build
-ARG NPM_CI_TIMEOUT_SECONDS=1500
-ARG NPM_CI_ATTEMPTS=2
-# Add `uv` for extended MCP support
+FROM node:24.16.0-alpine AS api-runtime
+
+RUN apk upgrade --no-cache && \
+    apk add --no-cache curl jemalloc py3-pip python3
+
+ENV LD_PRELOAD=/usr/lib/libjemalloc.so.2
 COPY --from=ghcr.io/astral-sh/uv:0.6.13 /uv /uvx /bin/
 RUN uv --version
+
 WORKDIR /app
-# Install only production deps
-RUN attempt=1; \
-    until timeout "$NPM_CI_TIMEOUT_SECONDS" npm ci --omit=dev; do \
-      status=$?; \
-      if [ "$attempt" -ge "$NPM_CI_ATTEMPTS" ]; then \
-        exit "$status"; \
-      fi; \
-      echo "npm ci --omit=dev failed with exit code $status; retrying attempt $((attempt + 1))/$NPM_CI_ATTEMPTS"; \
-      attempt=$((attempt + 1)); \
-      npm cache clean --force || true; \
-      sleep 10; \
-    done
-COPY api ./api
-COPY config ./config
-COPY skill ./skill
-COPY --from=data-provider-build /app/packages/data-provider/dist ./packages/data-provider/dist
-COPY --from=data-schemas-build /app/packages/data-schemas/dist ./packages/data-schemas/dist
-COPY --from=api-package-build /app/packages/api/dist ./packages/api/dist
-COPY --from=client-build /app/client/dist ./client/dist
-# Propagate build metadata into runtime env so /api/config can expose it.
-# Declared here (after the heavy install/copy steps) so that commit/date
-# changing on every CI run does not bust the cache for those layers.
+
+COPY --chown=node:node package.json package-lock.json ./
+COPY --chown=node:node api/package.json ./api/package.json
+COPY --chown=node:node client/package.json ./client/package.json
+COPY --chown=node:node packages/api/package.json ./packages/api/package.json
+COPY --chown=node:node packages/client/package.json ./packages/client/package.json
+COPY --chown=node:node packages/data-provider/package.json ./packages/data-provider/package.json
+COPY --chown=node:node packages/data-schemas/package.json ./packages/data-schemas/package.json
+COPY --from=production-dependencies --chown=node:node /app/node_modules ./node_modules
+
+COPY --chown=node:node api ./api
+COPY --chown=node:node config ./config
+COPY --chown=node:node skill ./skill
+COPY --chown=node:node client/public ./client/public
+COPY --from=data-provider-build --chown=node:node /app/packages/data-provider/dist ./packages/data-provider/dist
+COPY --from=data-schemas-build --chown=node:node /app/packages/data-schemas/dist ./packages/data-schemas/dist
+COPY --from=api-package-build --chown=node:node /app/packages/api/dist ./packages/api/dist
+COPY --from=client-build --chown=node:node /app/client/dist ./client/dist
+
+RUN touch .env && \
+    mkdir -p /app/client/public/images /app/logs /app/uploads /app/skill && \
+    chown -R node:node /app && \
+    chmod -R a+rX /app
+
 ARG BUILD_COMMIT
 ARG BUILD_BRANCH
 ARG BUILD_DATE
 ENV BUILD_COMMIT=${BUILD_COMMIT}
 ENV BUILD_BRANCH=${BUILD_BRANCH}
 ENV BUILD_DATE=${BUILD_DATE}
-WORKDIR /app/api
-EXPOSE 3080
 ENV HOST=0.0.0.0
-CMD ["node", "server/index.js"]
+ENV NODE_ENV=production
+
+USER node
+EXPOSE 3080
+CMD ["node", "api/server/index.js"]
