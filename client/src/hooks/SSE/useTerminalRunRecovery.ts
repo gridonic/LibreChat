@@ -10,6 +10,7 @@ import {
   disconnectedRunRecoveryQueryKey,
   getDisconnectedRunRecovery,
   getResumableRunEpoch,
+  isResumableRunInProgress,
   resumableRunStartingQueryKey,
   setDisconnectedRunRecovery,
   terminalRecoveryRequestQueryKey,
@@ -166,7 +167,12 @@ export default function useTerminalRunRecovery({
 
   const recoverInactiveResponse = useCallback(
     async (status: StreamStatusResponse, expectedEpoch?: number) => {
-      if (!conversationId || status.active || inFlightRef.current) {
+      if (
+        !conversationId ||
+        status.active ||
+        inFlightRef.current ||
+        isResumableRunInProgress(queryClient, conversationId)
+      ) {
         return;
       }
       const recoveryEpoch = expectedEpoch ?? getResumableRunEpoch(queryClient, conversationId);
@@ -197,12 +203,14 @@ export default function useTerminalRunRecovery({
           canContinue: () =>
             mountedRef.current &&
             !activeRef.current &&
+            !isResumableRunInProgress(queryClient, conversationId) &&
             getResumableRunEpoch(queryClient, conversationId) === recoveryEpoch,
         });
         if (
           !mountedRef.current ||
           controller.signal.aborted ||
           activeRef.current ||
+          isResumableRunInProgress(queryClient, conversationId) ||
           getResumableRunEpoch(queryClient, conversationId) !== recoveryEpoch
         ) {
           return;
@@ -281,7 +289,13 @@ export default function useTerminalRunRecovery({
   );
 
   const checkTerminalStatus = useCallback(async () => {
-    if (!conversationId || isActive || isRunStarting || inFlightRef.current) {
+    if (
+      !conversationId ||
+      isActive ||
+      isRunStarting ||
+      inFlightRef.current ||
+      isResumableRunInProgress(queryClient, conversationId)
+    ) {
       return;
     }
     const expectedEpoch = getResumableRunEpoch(queryClient, conversationId);
@@ -295,6 +309,7 @@ export default function useTerminalRunRecovery({
       canContinue: () =>
         mountedRef.current &&
         !activeRef.current &&
+        !isResumableRunInProgress(queryClient, conversationId) &&
         getResumableRunEpoch(queryClient, conversationId) === expectedEpoch,
     });
     if (
@@ -302,6 +317,7 @@ export default function useTerminalRunRecovery({
       controller.signal.aborted ||
       !mountedRef.current ||
       activeRef.current ||
+      isResumableRunInProgress(queryClient, conversationId) ||
       getResumableRunEpoch(queryClient, conversationId) !== expectedEpoch
     ) {
       return;

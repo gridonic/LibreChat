@@ -1,4 +1,4 @@
-import { StrictMode, type PropsWithChildren } from 'react';
+import { StrictMode, useEffect, type PropsWithChildren } from 'react';
 import { RecoilRoot } from 'recoil';
 import { MemoryRouter, useNavigate } from 'react-router-dom';
 import { Constants, QueryKeys } from 'librechat-data-provider';
@@ -166,6 +166,52 @@ describe('useTerminalRunRecovery', () => {
       setResumableRunStarting(queryClient, CONVERSATION_ID, false);
     });
     await waitFor(() => expect(mockFetchStreamStatus).toHaveBeenCalled());
+  });
+
+  it('honors a run-start marker written by an earlier effect in the same commit', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient.setQueryData([QueryKeys.messages, CONVERSATION_ID], provisionalMessages);
+    mockGetMessagesByConvoId.mockResolvedValue(persistedMessages);
+
+    renderHook(
+      () => {
+        useEffect(() => {
+          setResumableRunStarting(queryClient, CONVERSATION_ID, true);
+        }, []);
+        return useTerminalRunRecovery({ conversationId: CONVERSATION_ID });
+      },
+      { wrapper: createWrapper(queryClient) },
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockFetchStreamStatus).not.toHaveBeenCalled();
+    expect(mockGetMessagesByConvoId).not.toHaveBeenCalled();
+  });
+
+  it('honors an active job written by an earlier effect in the same commit', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient.setQueryData([QueryKeys.messages, CONVERSATION_ID], provisionalMessages);
+    mockGetMessagesByConvoId.mockResolvedValue(persistedMessages);
+
+    renderHook(
+      () => {
+        useEffect(() => {
+          queryClient.setQueryData([QueryKeys.activeJobs], {
+            activeJobIds: [CONVERSATION_ID],
+          });
+        }, []);
+        return useTerminalRunRecovery({ conversationId: CONVERSATION_ID });
+      },
+      { wrapper: createWrapper(queryClient) },
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockFetchStreamStatus).not.toHaveBeenCalled();
+    expect(mockGetMessagesByConvoId).not.toHaveBeenCalled();
   });
 
   it('does not let an old recovery overwrite a newer run', async () => {

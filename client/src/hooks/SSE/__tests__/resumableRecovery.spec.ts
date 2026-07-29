@@ -1,10 +1,12 @@
 import { QueryClient } from '@tanstack/react-query';
+import { QueryKeys } from 'librechat-data-provider';
 import {
   beginResumableRun,
   consumeTerminalEventSeen,
   getDisconnectedRunRecovery,
   getPendingRunReconciliations,
   getResumableRunEpoch,
+  isResumableRunInProgress,
   markTerminalEventSeen,
   moveDisconnectedRunToPendingReconciliation,
   queuePendingRunReconciliation,
@@ -35,6 +37,19 @@ describe('resumable recovery state', () => {
     expect(beginResumableRun(queryClient, CONVERSATION_ID)).toBe(1);
     expect(beginResumableRun(queryClient, CONVERSATION_ID)).toBe(2);
     expect(getResumableRunEpoch(queryClient, CONVERSATION_ID)).toBe(2);
+  });
+
+  it('reads live starting and active-job state from the query cache', () => {
+    const queryClient = new QueryClient();
+
+    expect(isResumableRunInProgress(queryClient, CONVERSATION_ID)).toBe(false);
+
+    queryClient.setQueryData(['resumable-run-starting', CONVERSATION_ID], true);
+    expect(isResumableRunInProgress(queryClient, CONVERSATION_ID)).toBe(true);
+
+    queryClient.setQueryData(['resumable-run-starting', CONVERSATION_ID], false);
+    queryClient.setQueryData([QueryKeys.activeJobs], { activeJobIds: [CONVERSATION_ID] });
+    expect(isResumableRunInProgress(queryClient, CONVERSATION_ID)).toBe(true);
   });
 
   it('moves a disconnected run into an epoch-bound pending task', () => {

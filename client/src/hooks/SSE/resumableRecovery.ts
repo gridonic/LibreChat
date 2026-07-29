@@ -1,3 +1,4 @@
+import { QueryKeys } from 'librechat-data-provider';
 import type { QueryClient } from '@tanstack/react-query';
 
 export type DisconnectedRunRecovery = {
@@ -81,6 +82,18 @@ export function setResumableRunStarting(
 
 export function getResumableRunStarting(queryClient: QueryClient, conversationId: string): boolean {
   return queryClient.getQueryData<boolean>(resumableRunStartingQueryKey(conversationId)) === true;
+}
+
+export function isResumableRunInProgress(
+  queryClient: QueryClient,
+  conversationId: string,
+): boolean {
+  if (getResumableRunStarting(queryClient, conversationId)) {
+    return true;
+  }
+
+  const activeJobs = queryClient.getQueryData<{ activeJobIds?: string[] }>([QueryKeys.activeJobs]);
+  return activeJobs?.activeJobIds?.includes(conversationId) === true;
 }
 
 export function requestTerminalRunRecovery(queryClient: QueryClient, conversationId: string) {

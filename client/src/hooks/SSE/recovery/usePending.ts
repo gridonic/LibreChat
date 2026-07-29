@@ -5,7 +5,7 @@ import type { PendingRunReconciliation } from '../resumableRecovery';
 import {
   getDisconnectedRunRecovery,
   getPendingRunReconciliations,
-  getResumableRunStarting,
+  isResumableRunInProgress,
   pendingRunReconciliationsQueryKey,
   removePendingRunReconciliations,
   requestTerminalRunRecovery,
@@ -68,6 +68,7 @@ export function usePendingRunReconciliation({
       !enabled ||
       !conversationId ||
       isCurrentJobActive ||
+      isResumableRunInProgress(queryClient, conversationId) ||
       hasCurrentRecovery ||
       isRunStarting ||
       unattemptedRuns.length === 0 ||
@@ -93,7 +94,7 @@ export function usePendingRunReconciliation({
         !isCurrentJobActive &&
         !hasCurrentRecovery &&
         !getDisconnectedRunRecovery(queryClient, conversationId) &&
-        !getResumableRunStarting(queryClient, conversationId),
+        !isResumableRunInProgress(queryClient, conversationId),
     })
       .then((refreshed) => {
         if (controller.signal.aborted || refreshed.retryStatus === 'aborted') {
