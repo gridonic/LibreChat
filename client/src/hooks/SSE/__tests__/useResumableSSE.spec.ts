@@ -40,12 +40,14 @@ jest.mock('sse.js', () => ({
 }));
 
 const mockSetQueryData = jest.fn();
+const mockSetQueryDefaults = jest.fn();
 const mockGetQueryData = jest.fn();
 const mockInvalidateQueries = jest.fn();
 const mockRemoveQueries = jest.fn();
 const mockFindAll = jest.fn((): Array<{ queryKey: unknown[] }> => []);
 const mockQueryClient = {
   setQueryData: mockSetQueryData,
+  setQueryDefaults: mockSetQueryDefaults,
   getQueryData: mockGetQueryData,
   invalidateQueries: mockInvalidateQueries,
   removeQueries: mockRemoveQueries,
@@ -248,6 +250,7 @@ describe('useResumableSSE - 404 error path', () => {
     mockClearStepMaps.mockClear();
     mockSetIsSubmitting.mockClear();
     mockSetQueryData.mockClear();
+    mockSetQueryDefaults.mockClear();
     mockGetQueryData.mockClear();
     mockInvalidateQueries.mockClear();
     mockRemoveQueries.mockClear();
@@ -301,13 +304,19 @@ describe('useResumableSSE - 404 error path', () => {
     unmount();
   });
 
-  it('invalidates message cache and clears stream status on 404 instead of showing error', async () => {
+  it('schedules terminal recovery and clears stream status on 404 instead of showing error', async () => {
     const { unmount } = await render404Scenario(CONV_ID);
 
     expect(mockErrorHandler).not.toHaveBeenCalled();
-    expect(mockInvalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['messages', CONV_ID],
-    });
+    expect(mockInvalidateQueries).not.toHaveBeenCalled();
+    expect(mockSetQueryData).toHaveBeenCalledWith(
+      ['resumable-disconnected-run', 'stream-123'],
+      expect.objectContaining({
+        startedAsNewConvo: false,
+        userMessageId: 'msg-1',
+        responseMessageId: 'resp-1',
+      }),
+    );
     expect(mockRemoveQueries).toHaveBeenCalledWith({
       queryKey: ['streamStatus', CONV_ID],
     });
@@ -341,7 +350,7 @@ describe('useResumableSSE - 404 error path', () => {
     unmount();
   });
 
-  it('invalidates the stream conversation id on 404 for a new conversation', async () => {
+  it('preserves the optimistic conversation while a new conversation is recovered', async () => {
     mockFindAll.mockReturnValue([{ queryKey: [QueryKeys.allConversations] }]);
     const submission = buildSubmission({
       conversation: {},
@@ -374,9 +383,7 @@ describe('useResumableSSE - 404 error path', () => {
       sse._emit('error', { responseCode: 404 });
     });
 
-    expect(mockInvalidateQueries).toHaveBeenCalledWith({
-      queryKey: [QueryKeys.messages, 'stream-123'],
-    });
+    expect(mockInvalidateQueries).not.toHaveBeenCalled();
     expect(mockRemoveQueries).toHaveBeenCalledWith({
       queryKey: ['streamStatus', 'stream-123'],
     });
@@ -384,22 +391,11 @@ describe('useResumableSSE - 404 error path', () => {
     const allConversationWrites = mockSetQueryData.mock.calls.filter(
       ([queryKey]) => Array.isArray(queryKey) && queryKey[0] === QueryKeys.allConversations,
     );
-    expect(allConversationWrites).toHaveLength(2);
-
-    const removeUpdater = allConversationWrites[1][1] as (data: {
-      pages: { conversations: { conversationId: string }[]; nextCursor: null }[];
-      pageParams: never[];
-    }) => { pages: { conversations: { conversationId: string }[] }[] };
-    const result = removeUpdater({
-      pages: [
-        {
-          conversations: [{ conversationId: 'stream-123' }, { conversationId: 'other' }],
-          nextCursor: null,
-        },
-      ],
-      pageParams: [],
-    });
-    expect(result.pages[0].conversations).toEqual([{ conversationId: 'other' }]);
+    expect(allConversationWrites).toHaveLength(1);
+    expect(mockSetQueryData).toHaveBeenCalledWith(
+      ['resumable-disconnected-run', 'stream-123'],
+      expect.objectContaining({ startedAsNewConvo: true, created: false }),
+    );
     unmount();
   });
 
@@ -1523,6 +1519,48 @@ describe('useResumableSSE - 404 error path', () => {
     });
 
     expect(mockErrorHandler).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it('keeps the active job authoritative and records recovery after reconnect exhaustion', async () => {
+    jest.useFakeTimers();
+    const submission = {
+      ...buildSubmission(),
+      resumeStreamId: CONV_ID,
+    } as TSubmission & { resumeStreamId: string };
+    const chatHelpers = buildChatHelpers();
+
+    const { result, unmount } = renderHook(() => useResumableSSE(submission, chatHelpers));
+    await flushMicrotasks();
+
+    let sse = getLastSSE();
+    for (const delay of [1000, 2000, 4000, 8000, 16000]) {
+      await act(async () => {
+        sse._emit('error');
+      });
+      await advanceRetryTimer(delay);
+      sse = getLastSSE();
+    }
+    await act(async () => {
+      sse._emit('error');
+    });
+
+    const activeJobWrites = mockSetQueryData.mock.calls.filter(
+      ([queryKey]) => Array.isArray(queryKey) && queryKey[0] === QueryKeys.activeJobs,
+    );
+    expect(activeJobWrites).toHaveLength(1);
+    expect(mockSetQueryData).toHaveBeenCalledWith(
+      ['resumable-disconnected-run', CONV_ID],
+      expect.objectContaining({
+        startedAsNewConvo: false,
+        userMessageId: 'msg-1',
+        responseMessageId: 'resp-1',
+      }),
+    );
+    expect(result.current).toEqual({
+      streamId: null,
+      resolvedStreamId: CONV_ID,
+    });
     unmount();
   });
 

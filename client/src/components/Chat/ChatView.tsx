@@ -18,12 +18,12 @@ import ConversationStarters from './Input/ConversationStarters';
 import { useGetMessagesByConvoId } from '~/data-provider';
 import ProjectLandingChip from './ProjectLandingChip';
 import MessagesView from './Messages/MessagesView';
+import { cn, isNotFoundError } from '~/utils';
 import Presentation from './Presentation';
 import ChatForm from './Input/ChatForm';
 import Landing from './Landing';
 import Header from './Header';
 import Footer from './Footer';
-import { cn } from '~/utils';
 import store from '~/store';
 
 function LoadingSpinner() {
@@ -49,7 +49,13 @@ function ChatView({ index = 0, project }: { index?: number; project?: TChatProje
 
   const fileMap = useFileMapContext();
 
-  const { data: messagesTree = null, isLoading } = useGetMessagesByConvoId(
+  const {
+    data: messagesTree = null,
+    error: messagesError,
+    isError: messagesIsError,
+    isFetching: messagesIsFetching,
+    isLoading,
+  } = useGetMessagesByConvoId(
     conversationId ?? '',
     {
       select: useCallback(
@@ -67,11 +73,18 @@ function ChatView({ index = 0, project }: { index?: number; project?: TChatProje
   const chatHelpers = useChatHelpers(index, conversationId);
   const addedChatHelpers = useAddedResponse();
 
-  useAdaptiveSSE(rootSubmission, chatHelpers, false, index);
+  const { resolvedStreamId } = useAdaptiveSSE(rootSubmission, chatHelpers, false, index);
 
   // Auto-resume if navigating back to conversation with active job
   // Wait for messages to load before resuming to avoid race condition
-  useResumeOnLoad(conversationId, chatHelpers.getMessages, index, !isLoading);
+  useResumeOnLoad(
+    conversationId,
+    chatHelpers.getMessages,
+    index,
+    !isLoading && !messagesIsFetching,
+    resolvedStreamId,
+    messagesIsError && isNotFoundError(messagesError),
+  );
 
   let content: JSX.Element | null | undefined;
   const isLandingPage =

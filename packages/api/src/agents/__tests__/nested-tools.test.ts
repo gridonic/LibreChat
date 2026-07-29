@@ -1,10 +1,10 @@
-import { Run, Constants, Providers, GraphEvents, StandardGraph } from '@librechat/agents';
-import { AIMessage, AIMessageChunk } from '@librechat/agents/langchain/messages';
-import { FakeListChatModel } from '@langchain/core/utils/testing';
 import { ChatGenerationChunk } from '@langchain/core/outputs';
-import type { BaseMessage } from '@langchain/core/messages';
+import { FakeListChatModel } from '@langchain/core/utils/testing';
+import { AIMessage, AIMessageChunk } from '@librechat/agents/langchain/messages';
+import { Run, Constants, Providers, GraphEvents, StandardGraph } from '@librechat/agents';
 import type { CallbackManagerForLLMRun } from '@langchain/core/callbacks/manager';
-import type { AgentInputs, GenericTool, IState } from '@librechat/agents';
+import type { AgentInputs, GenericTool, IState, LCTool } from '@librechat/agents';
+import type { BaseMessage } from '@langchain/core/messages';
 
 interface ForwarderCallback {
   handleCustomEvent?: (eventName: string, data: unknown, runId: string) => Promise<void> | void;
@@ -30,7 +30,7 @@ interface ToolExecuteResult {
 function findSubagentTool(graph: StandardGraph): GenericTool {
   const context = [...graph.agentContexts.values()][0];
   const tool = context?.graphTools?.find(
-    (candidate) => 'name' in candidate && candidate.name === Constants.SUBAGENT,
+    (candidate: GenericTool) => 'name' in candidate && candidate.name === Constants.SUBAGENT,
   );
 
   if (!tool) {
@@ -72,7 +72,7 @@ describe('nested event-driven tool execution', () => {
         if (nestedDepth === 3) {
           const context = [...this.agentContexts.values()][0];
           leafToolDefinitions =
-            context?.toolDefinitions?.map((definition) => definition.name) ?? [];
+            context?.toolDefinitions?.map((definition: LCTool) => definition.name) ?? [];
 
           return {
             invoke: jest.fn(async (_state, options: WorkflowOptions) => {
@@ -204,7 +204,7 @@ describe('nested event-driven tool execution', () => {
         const boundNames =
           context
             ?.getToolsForBinding()
-            ?.flatMap((tool) =>
+            ?.flatMap((tool: GenericTool) =>
               'name' in tool && typeof tool.name === 'string' ? [tool.name] : [],
             ) ?? [];
         boundToolsByTurn.push(boundNames);
