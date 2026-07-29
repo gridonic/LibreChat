@@ -1,16 +1,16 @@
 import { createElement } from 'react';
-import { act, renderHook, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { QueryKeys, dataService } from 'librechat-data-provider';
-import type { ReactNode } from 'react';
+import { act, renderHook, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { TMessage } from 'librechat-data-provider';
-import { logger } from '~/utils';
+import type { ReactNode } from 'react';
 import {
   getStableMessages,
   shouldPreserveMessagesOnNotFound,
   useGetMessagesByConvoId,
 } from '../queries';
+import { logger } from '~/utils';
 
 jest.mock('librechat-data-provider', () => {
   const actual = jest.requireActual('librechat-data-provider');
@@ -344,7 +344,10 @@ describe('useGetMessagesByConvoId', () => {
     await waitFor(() => {
       expect(result.current.data).toBe(currentMessages);
     });
-    expect(dataService.getMessagesByConvoId).toHaveBeenCalledWith(conversationId);
+    expect(dataService.getMessagesByConvoId).toHaveBeenCalledWith(
+      conversationId,
+      expect.any(AbortSignal),
+    );
     expect(queryClient.getQueryData([QueryKeys.messages, conversationId])).toBe(currentMessages);
 
     unmount();
@@ -388,7 +391,10 @@ describe('useGetMessagesByConvoId', () => {
     await waitFor(() => {
       expect(result.current.data).toBe(currentMessages);
     });
-    expect(dataService.getMessagesByConvoId).toHaveBeenCalledWith(conversationId);
+    expect(dataService.getMessagesByConvoId).toHaveBeenCalledWith(
+      conversationId,
+      expect.any(AbortSignal),
+    );
     expect(queryClient.getQueryData([QueryKeys.messages, conversationId])).toBe(currentMessages);
     expect(logger.warn).toHaveBeenCalledWith(
       'messages',

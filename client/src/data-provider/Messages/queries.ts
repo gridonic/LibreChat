@@ -1,8 +1,8 @@
 import { useLayoutEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { UseQueryOptions, QueryObserverResult, QueryClient } from '@tanstack/react-query';
 import { Constants, QueryKeys, dataService } from 'librechat-data-provider';
+import type { UseQueryOptions, QueryObserverResult, QueryClient } from '@tanstack/react-query';
 import type * as t from 'librechat-data-provider';
 import { isNotFoundError, logger } from '~/utils';
 
@@ -98,10 +98,10 @@ export const useGetMessagesByConvoId = <TData = t.TMessage[]>(
 
   return useQuery<t.TMessage[], unknown, TData>(
     [QueryKeys.messages, id],
-    async () => {
+    async ({ signal }) => {
       let result: t.TMessage[];
       try {
-        result = await dataService.getMessagesByConvoId(id);
+        result = await dataService.getMessagesByConvoId(id, signal);
       } catch (error) {
         const currentMessages = queryClient.getQueryData<t.TMessage[]>([QueryKeys.messages, id]);
         const hasLiveStream = isStreamingRef.current || hasActiveJob(queryClient, id);

@@ -1,6 +1,6 @@
 import { RecoilRoot, useRecoilValue } from 'recoil';
 import { Constants } from 'librechat-data-provider';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 
 import type { TMessage, TConversation, TSubmission } from 'librechat-data-provider';
 import type { MutableSnapshot } from 'recoil';
@@ -10,10 +10,19 @@ import useResumeOnLoad from '../useResumeOnLoad';
 import store from '~/store';
 
 const mockUseStreamStatus = jest.fn();
+const mockRecoverInactiveResponse = jest.fn();
+const mockUseTerminalRunRecovery = jest.fn((_params?: unknown) => ({
+  recoverInactiveResponse: mockRecoverInactiveResponse,
+}));
 
 jest.mock('~/data-provider', () => ({
   useStreamStatus: (conversationId: string | undefined, enabled: boolean) =>
     mockUseStreamStatus(conversationId, enabled),
+}));
+
+jest.mock('../useTerminalRunRecovery', () => ({
+  __esModule: true,
+  default: (params: unknown) => mockUseTerminalRunRecovery(params),
 }));
 
 const CONVERSATION_ID = 'conv-current';
@@ -66,6 +75,7 @@ function renderUseResumeOnLoad({
   submission = null,
   conversationId = CONVERSATION_ID,
   messagesLoaded = true,
+  resolvedConversationId,
   onSubmission,
   siblingIndexParentId,
   onSiblingIndex,
@@ -75,6 +85,7 @@ function renderUseResumeOnLoad({
   submission?: TSubmission | null;
   conversationId?: string;
   messagesLoaded?: boolean;
+  resolvedConversationId?: string | null;
   onSubmission?: (submission: TSubmission | null) => void;
   siblingIndexParentId?: string;
   onSiblingIndex?: (siblingIndex: number) => void;
@@ -108,9 +119,10 @@ function renderUseResumeOnLoad({
 
   return {
     getMessages,
-    ...renderHook(() => useResumeOnLoad(conversationId, getMessages, 0, messagesLoaded), {
-      wrapper,
-    }),
+    ...renderHook(
+      () => useResumeOnLoad(conversationId, getMessages, 0, messagesLoaded, resolvedConversationId),
+      { wrapper },
+    ),
   };
 }
 
@@ -118,6 +130,8 @@ describe('useResumeOnLoad', () => {
   beforeEach(() => {
     jest.spyOn(console, 'log').mockImplementation(() => undefined);
     mockUseStreamStatus.mockReset();
+    mockUseTerminalRunRecovery.mockClear();
+    mockRecoverInactiveResponse.mockReset();
     mockUseStreamStatus.mockReturnValue({
       data: undefined,
       isSuccess: false,
@@ -126,7 +140,36 @@ describe('useResumeOnLoad', () => {
   });
 
   afterEach(() => {
+    window.history.replaceState({}, '', '/');
     jest.restoreAllMocks();
+  });
+
+  it('does not attach an old resolved stream to an intentionally opened new chat', () => {
+    window.history.replaceState({}, '', '/c/new');
+
+    renderUseResumeOnLoad({
+      conversationId: String(Constants.NEW_CONVO),
+      resolvedConversationId: 'old-stream',
+    });
+
+    expect(mockUseTerminalRunRecovery).toHaveBeenCalledWith(
+      expect.objectContaining({ conversationId: undefined }),
+    );
+  });
+
+  it('hands an inactive status to terminal recovery', async () => {
+    const streamStatus = { active: false, status: 'complete' };
+    mockUseStreamStatus.mockReturnValue({
+      data: streamStatus,
+      isSuccess: true,
+      isFetching: false,
+    });
+
+    renderUseResumeOnLoad({});
+
+    await waitFor(() => {
+      expect(mockRecoverInactiveResponse).toHaveBeenCalledWith(streamStatus);
+    });
   });
 
   it('does not check for resume when a null-conversation submission matches a loaded user message', () => {

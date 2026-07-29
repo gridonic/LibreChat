@@ -3,6 +3,7 @@ import { useSetRecoilState, useRecoilValue, useRecoilCallback } from 'recoil';
 import { Constants, tMessageSchema, isAssistantsEndpoint } from 'librechat-data-provider';
 import type { TMessage, TConversation, TSubmission, Agents } from 'librechat-data-provider';
 import type { StreamStatusResponse } from '~/data-provider';
+import useTerminalRunRecovery from './useTerminalRunRecovery';
 import { getBranchSiblingIndexesForTarget } from '~/utils';
 import { useStreamStatus } from '~/data-provider';
 import store from '~/store';
@@ -179,6 +180,8 @@ export default function useResumeOnLoad(
   getMessages: () => TMessage[] | undefined,
   runIndex = 0,
   messagesLoaded = true,
+  resolvedConversationId?: string | null,
+  messagesNotFound = false,
 ) {
   const setSubmission = useSetRecoilState(store.submissionByIndex(runIndex));
   const currentSubmission = useRecoilValue(store.submissionByIndex(runIndex));
@@ -187,6 +190,22 @@ export default function useResumeOnLoad(
   const endpointType = currentConversation?.endpointType;
   const actualEndpoint = endpointType ?? endpoint;
   const resumableEnabled = !isAssistantsEndpoint(actualEndpoint);
+  const resolvedConversationOwnsNativeRoute =
+    resolvedConversationId != null &&
+    typeof window !== 'undefined' &&
+    window.location.pathname === `/c/${resolvedConversationId}`;
+  let recoveryConversationId = conversationId;
+  if (conversationId === Constants.NEW_CONVO) {
+    recoveryConversationId = resolvedConversationOwnsNativeRoute
+      ? (resolvedConversationId ?? undefined)
+      : undefined;
+  }
+  const { recoverInactiveResponse } = useTerminalRunRecovery({
+    conversationId: recoveryConversationId,
+    runIndex,
+    enabled: resumableEnabled,
+    messagesNotFound,
+  });
   // Track conversations we've already processed (either resumed or skipped)
   const processedConvoRef = useRef<string | null>(null);
   const restoreResumeBranch = useRecoilCallback(
@@ -307,6 +326,7 @@ export default function useResumeOnLoad(
 
     if (!streamStatus.active || !streamStatus.streamId) {
       console.log('[ResumeOnLoad] No active job to resume for:', conversationId);
+      void recoverInactiveResponse(streamStatus);
       processedConvoRef.current = conversationId;
       return;
     }
@@ -367,6 +387,7 @@ export default function useResumeOnLoad(
     getMessages,
     setSubmission,
     restoreResumeBranch,
+    recoverInactiveResponse,
   ]);
 
   // Reset processedConvoRef when conversation changes to allow re-checking

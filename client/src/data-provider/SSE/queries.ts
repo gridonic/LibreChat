@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { apiBaseUrl, QueryKeys, request, dataService } from 'librechat-data-provider';
 import { useQuery, useQueries, useQueryClient } from '@tanstack/react-query';
+import { apiBaseUrl, QueryKeys, request, dataService } from 'librechat-data-provider';
 import type { Agents, TConversation } from 'librechat-data-provider';
 import { isNotFoundError, updateConvoInAllQueries } from '~/utils';
 import { useGetStartupConfig } from '../Endpoints';
@@ -16,16 +16,20 @@ export interface StreamStatusResponse {
 
 export const streamStatusQueryKey = (conversationId: string) => ['streamStatus', conversationId];
 
-export const fetchStreamStatus = async (conversationId: string): Promise<StreamStatusResponse> => {
+export const fetchStreamStatus = async (
+  conversationId: string,
+  signal?: AbortSignal,
+): Promise<StreamStatusResponse> => {
   return request.get<StreamStatusResponse>(
     `${apiBaseUrl()}/api/agents/chat/status/${conversationId}`,
+    signal ? { signal } : undefined,
   );
 };
 
 export function useStreamStatus(conversationId: string | undefined, enabled = true) {
   return useQuery({
     queryKey: streamStatusQueryKey(conversationId || ''),
-    queryFn: () => fetchStreamStatus(conversationId!),
+    queryFn: ({ signal }) => fetchStreamStatus(conversationId!, signal),
     enabled: !!conversationId && enabled,
     staleTime: 1000,
     refetchOnMount: true,

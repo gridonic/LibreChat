@@ -27,6 +27,16 @@ import type { EventHandlerParams } from './useEventHandlers';
 import type { ActiveJobsResponse } from '~/data-provider';
 import type { TResData } from '~/common';
 import {
+  beginResumableRun,
+  clearDisconnectedRunRecovery,
+  clearTerminalEventSeen,
+  markTerminalEventSeen,
+  moveDisconnectedRunToPendingReconciliation,
+  requestTerminalRunRecovery,
+  setDisconnectedRunRecovery,
+  setResumableRunStarting,
+} from './resumableRecovery';
+import {
   clearAllDrafts,
   removeConvoFromAllQueries,
   upsertConvoInAllQueries,
@@ -438,6 +448,7 @@ export default function useResumableSSE(
   );
   const [_completed, setCompleted] = useState(new Set());
   const [streamId, setStreamId] = useState<string | null>(null);
+  const [resolvedStreamId, setResolvedStreamId] = useState<string | null>(null);
   const setAbortScroll = useSetRecoilState(store.abortScrollFamily(runIndex));
   const setSubmission = useSetRecoilState(store.submissionByIndex(runIndex));
   const setShowStopButton = useSetRecoilState(store.showStopButtonByIndex(runIndex));
@@ -551,11 +562,13 @@ export default function useResumableSSE(
             }
             // Clear handler maps on stream completion to prevent memory leaks
             clearStepMaps();
+            markTerminalEventSeen(queryClient, currentStreamId);
             // Optimistically remove from active jobs
             removeActiveJob(currentStreamId);
             (startupConfig?.balance?.enabled ?? false) && balanceQuery.refetch();
             sse.close();
             setStreamId(null);
+            setResolvedStreamId(null);
             optimisticStreamIdsRef.current.delete(currentStreamId);
             createdStreamIdsRef.current.delete(currentStreamId);
             return;
@@ -844,11 +857,17 @@ export default function useResumableSSE(
         /* @ts-ignore - sse.js types don't expose responseCode */
         const responseCode = e.responseCode;
 
-        // 404 → job completed & was cleaned up; messages are persisted in DB.
-        // Invalidate cache once so react-query refetches instead of showing an error.
+        // 404 → job completed & was cleaned up. Reconcile persisted messages
+        // through the terminal recovery path so DB persistence races are retried.
         if (responseCode === 404) {
           const convoId = currentSubmission.conversation?.conversationId;
-          console.log('[ResumableSSE] Stream 404, invalidating messages for:', convoId);
+          setDisconnectedRunRecovery(queryClient, currentStreamId, {
+            startedAsNewConvo: optimisticStreamIdsRef.current.has(currentStreamId),
+            created: createdStreamIdsRef.current.has(currentStreamId),
+            userMessageId: currentSubmission.userMessage?.messageId,
+            responseMessageId: currentSubmission.initialResponse?.messageId,
+          });
+          requestTerminalRunRecovery(queryClient, currentStreamId);
           sse.close();
           removeActiveJob(currentStreamId);
           /** Terminal: drop any in-flight live estimate so the gauge doesn't
@@ -859,16 +878,7 @@ export default function useResumableSSE(
             clearAllDrafts(Constants.NEW_CONVO);
           }
           clearStepMaps();
-          if (convoId) {
-            queryClient.invalidateQueries({ queryKey: [QueryKeys.messages, convoId] });
-            queryClient.removeQueries({ queryKey: streamStatusQueryKey(convoId) });
-          }
-          if (
-            !createdStreamIdsRef.current.has(currentStreamId) &&
-            optimisticStreamIdsRef.current.has(currentStreamId)
-          ) {
-            removeConvoFromAllQueries(queryClient, currentStreamId);
-          }
+          convoId && queryClient.removeQueries({ queryKey: streamStatusQueryKey(convoId) });
           setIsSubmitting(false);
           setShowStopButton(false);
           setStreamId(null);
@@ -954,6 +964,8 @@ export default function useResumableSSE(
           setIsSubmitting(false);
           setShowStopButton(false);
           setStreamId(null);
+          markTerminalEventSeen(queryClient, currentStreamId);
+          setResolvedStreamId(null);
           optimisticStreamIdsRef.current.delete(currentStreamId);
           createdStreamIdsRef.current.delete(currentStreamId);
           reconnectAttemptRef.current = 0;
@@ -995,14 +1007,13 @@ export default function useResumableSSE(
           /** Terminal: clear the in-flight live estimate like the other
            *  stop-reconnecting paths so the gauge doesn't show stale tokens */
           resetLive({ ...currentSubmission, userMessage });
-          // Optimistically remove from active jobs on max retries
-          removeActiveJob(currentStreamId);
-          if (
-            !createdStreamIdsRef.current.has(currentStreamId) &&
-            optimisticStreamIdsRef.current.has(currentStreamId)
-          ) {
-            removeConvoFromAllQueries(queryClient, currentStreamId);
-          }
+          setDisconnectedRunRecovery(queryClient, currentStreamId, {
+            startedAsNewConvo: optimisticStreamIdsRef.current.has(currentStreamId),
+            created: createdStreamIdsRef.current.has(currentStreamId),
+            userMessageId: currentSubmission.userMessage?.messageId,
+            responseMessageId: currentSubmission.initialResponse?.messageId,
+          });
+          requestTerminalRunRecovery(queryClient, currentStreamId);
           setIsSubmitting(false);
           setShowStopButton(false);
           setStreamId(null);
@@ -1239,20 +1250,43 @@ export default function useResumableSSE(
         // Resume: just subscribe to existing stream, don't start new generation
         console.log('[ResumableSSE] Resuming existing stream:', resumeStreamId);
         setStreamId(resumeStreamId);
+        setResolvedStreamId(resumeStreamId);
         // Optimistically add to active jobs (in case it's not already there)
         addActiveJob(resumeStreamId);
         subscribeToStream(resumeStreamId, submission, true); // isResume=true
       } else {
         // New generation: start and then subscribe
         console.log('[ResumableSSE] Starting NEW generation');
+        const submissionConversationId = submission.conversation?.conversationId;
+        const startingConversationId = hasConcreteConversationId(submissionConversationId)
+          ? (submissionConversationId as string)
+          : undefined;
+        if (startingConversationId) {
+          setResumableRunStarting(queryClient, startingConversationId, true);
+          clearTerminalEventSeen(queryClient, startingConversationId);
+          moveDisconnectedRunToPendingReconciliation(queryClient, startingConversationId);
+          beginResumableRun(queryClient, startingConversationId);
+        }
         const newStreamId = await startGeneration(submission, signal);
         if (signal.aborted) {
+          if (startingConversationId) {
+            setResumableRunStarting(queryClient, startingConversationId, false);
+          }
           return;
         }
         if (newStreamId) {
+          if (newStreamId !== submissionConversationId) {
+            clearTerminalEventSeen(queryClient, newStreamId);
+            clearDisconnectedRunRecovery(queryClient, newStreamId);
+            beginResumableRun(queryClient, newStreamId);
+          }
           setStreamId(newStreamId);
+          setResolvedStreamId(newStreamId);
           // Optimistically add to active jobs
           addActiveJob(newStreamId);
+          if (startingConversationId) {
+            setResumableRunStarting(queryClient, startingConversationId, false);
+          }
           // Queue title generation if this is a new conversation (first message).
           // Skip temporary conversations — the server never generates titles for
           // them, so polling would 404 indefinitely.
@@ -1268,6 +1302,9 @@ export default function useResumableSSE(
           submissionRef.current = streamSubmission;
           subscribeToStream(newStreamId, streamSubmission);
         } else {
+          if (startingConversationId) {
+            setResumableRunStarting(queryClient, startingConversationId, false);
+          }
           console.error('[ResumableSSE] Failed to get streamId from startGeneration');
         }
       }
@@ -1300,5 +1337,5 @@ export default function useResumableSSE(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submission]);
 
-  return { streamId };
+  return { streamId, resolvedStreamId };
 }
