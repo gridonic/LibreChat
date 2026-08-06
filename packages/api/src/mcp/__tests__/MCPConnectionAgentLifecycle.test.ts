@@ -716,7 +716,7 @@ describe('MCPConnection session-ID-aware SSE failure handling', () => {
     fireSSEError(conn, transport, 401);
 
     expect(emitSpy).toHaveBeenCalledWith('oauthError', expect.any(Error));
-    expect(emitSpy).toHaveBeenCalledWith('connectionChange', 'error');
+    expect(emitSpy).not.toHaveBeenCalledWith('connectionChange', 'error');
   });
 
   it('still reconnects when a 502 SSE failure belongs to an active session ID', () => {

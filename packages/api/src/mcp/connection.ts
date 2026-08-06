@@ -1147,6 +1147,7 @@ export class MCPConnection extends EventEmitter {
   private readonly userId?: string;
   private lastPingTime: number;
   private lastConnectionCheckAt: number = 0;
+  private lastConnectionCheckError?: unknown;
   private oauthTokens?: MCPOAuthTokens | null;
   private requestHeaders?: Record<string, string> | null;
   private oauthRequired = false;
@@ -1765,6 +1766,7 @@ export class MCPConnection extends EventEmitter {
     this.on('connectionChange', (state: t.ConnectionState) => {
       this.connectionState = state;
       if (state === 'connected') {
+        this.lastConnectionCheckError = undefined;
         this.isReconnecting = false;
         this.isInitializing = false;
         this.shouldStopReconnecting = false;
@@ -2169,6 +2171,7 @@ export class MCPConnection extends EventEmitter {
       if (this.isOAuthError(error)) {
         logger.warn(`${this.getLogPrefix()} OAuth authentication error detected`);
         this.emit('oauthError', error);
+        return;
       }
 
       /**
@@ -2398,6 +2401,7 @@ export class MCPConnection extends EventEmitter {
       return true;
     }
     this.lastConnectionCheckAt = now;
+    this.lastConnectionCheckError = undefined;
 
     try {
       // Try ping first as it's the lightest check
@@ -2414,6 +2418,7 @@ export class MCPConnection extends EventEmitter {
           (error as Error)?.message.includes('method not found'));
 
       if (!pingUnsupported) {
+        this.lastConnectionCheckError = error;
         logger.error(`${this.getLogPrefix()} Ping failed:`, error);
         return false;
       }
@@ -2446,6 +2451,7 @@ export class MCPConnection extends EventEmitter {
         }
       } catch (capabilityError) {
         // If capability check fails, the connection is likely broken
+        this.lastConnectionCheckError = capabilityError;
         logger.error(`${this.getLogPrefix()} Connection verification failed:`, capabilityError);
         return false;
       }
@@ -2454,6 +2460,14 @@ export class MCPConnection extends EventEmitter {
 
   public setOAuthTokens(tokens: MCPOAuthTokens): void {
     this.oauthTokens = tokens;
+  }
+
+  public isOAuthAuthenticationError(error: unknown): boolean {
+    return this.isOAuthError(error);
+  }
+
+  public getLastConnectionCheckError(): unknown {
+    return this.lastConnectionCheckError;
   }
 
   /**
