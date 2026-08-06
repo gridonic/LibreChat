@@ -2170,6 +2170,8 @@ export class MCPConnection extends EventEmitter {
       // Check if it's an OAuth authentication error
       if (this.isOAuthError(error)) {
         logger.warn(`${this.getLogPrefix()} OAuth authentication error detected`);
+        this.lastConnectionCheckError = error;
+        this.connectionState = 'error';
         this.emit('oauthError', error);
         return;
       }
