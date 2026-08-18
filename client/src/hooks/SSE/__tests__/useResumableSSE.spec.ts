@@ -3752,6 +3752,56 @@ describe('useResumableSSE', () => {
     unmount();
   });
 
+  it('refreshes a completed response after the reconnect retry ceiling', async () => {
+    jest.useFakeTimers();
+    const persisted = [
+      {
+        messageId: 'persisted-response',
+        parentMessageId: 'msg-1',
+        conversationId: CONV_ID,
+        text: 'Completed while disconnected',
+        isCreatedByUser: false,
+      },
+    ] as TMessage[];
+    mockFetchStreamStatus.mockResolvedValue({
+      active: false,
+      status: 'complete',
+      streamId: CONV_ID,
+      createdAt: 1000,
+      resumeState: { pendingSteers: [], aggregatedContent: [] },
+    });
+    mockFetchQuery.mockResolvedValueOnce(persisted);
+    const submission = {
+      ...buildSubmission(),
+      resumeStreamId: CONV_ID,
+      resumeGenerationCreatedAt: 1000,
+    } as TSubmission & { resumeStreamId: string; resumeGenerationCreatedAt: number };
+
+    const { unmount } = renderHook(() => useResumableSSE(submission, buildChatHelpers()));
+    await flushMicrotasks();
+
+    for (const delay of [1_000, 2_000, 4_000, 8_000, 16_000]) {
+      await act(async () => {
+        getLastSSE()._emit('error');
+        await Promise.resolve();
+      });
+      await advanceRetryTimer(delay);
+    }
+    await act(async () => {
+      getLastSSE()._emit('error');
+      await Promise.resolve();
+    });
+    await flushMicrotasks();
+
+    expect(mockFetchQuery).toHaveBeenCalled();
+    expect(mockSettleAppliedSteerParts).toHaveBeenCalledWith(CONV_ID, persisted);
+    expect(mockSetRunEnd).toHaveBeenCalledWith(
+      expect.objectContaining({ conversationId: CONV_ID, outcome: 'completed' }),
+    );
+    expect(mockSetSubmission).toHaveBeenCalledWith(null);
+    unmount();
+  });
+
   it('does not complete a terminal retry-ceiling status when persisted messages cannot be fetched', async () => {
     jest.useFakeTimers();
     mockFetchStreamStatus.mockResolvedValue({
