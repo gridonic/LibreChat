@@ -966,9 +966,14 @@ const DEFAULT_SSE_READ_TIMEOUT = FIVE_MINUTES;
  * These are SDK-internal strings, not part of a public API. If the SDK changes
  * them, suppression in setupTransportErrorHandlers will silently stop working.
  */
+const SDK_STREAMABLE_HTTP_SSE_OPEN_FAILED = 'Streamable HTTP error: Failed to open SSE stream:';
 const SDK_SSE_STREAM_DISCONNECTED = 'SSE stream disconnected';
 const SDK_SSE_RECONNECT_FAILED = 'Failed to reconnect SSE stream';
 const SDK_SSE_RETRIES_EXHAUSTED = 'Maximum reconnection attempts';
+
+/** Identifies pre-response failures from the optional Streamable HTTP SSE GET. */
+const optionalStreamableHttpSseGetErrors = new WeakSet<object>();
+const handledOptionalStreamableHttpSseGetErrors = new WeakSet<object>();
 
 /**
  * Headers for SSE connections.
@@ -1330,7 +1335,15 @@ export class MCPConnection extends EventEmitter {
           useSSRFProtection,
           currentAllowedAddresses,
         );
-        const response = await undiciFetch(currentUrlString, currentInit);
+        let response: UndiciResponse;
+        try {
+          response = await undiciFetch(currentUrlString, currentInit);
+        } catch (error) {
+          if (guardStreamableHTTPResponses && isGet && error && typeof error === 'object') {
+            optionalStreamableHttpSseGetErrors.add(error);
+          }
+          throw error;
+        }
         const isMethodPreservingRedirect = response.status === 307 || response.status === 308;
         const responseContext = {
           logPrefix,
@@ -2156,8 +2169,8 @@ export class MCPConnection extends EventEmitter {
     this.reportedStandaloneSseConflict = false;
 
     transport.onerror = (error) => {
-      const rawMessage =
-        error && typeof error === 'object' ? ((error as { message?: string }).message ?? '') : '';
+      const errorObject = error && typeof error === 'object' ? error : null;
+      const rawMessage = errorObject ? ((errorObject as { message?: string }).message ?? '') : '';
 
       /**
        * The MCP SDK's StreamableHTTPClientTransport fires onerror for SSE GET stream
@@ -2218,12 +2231,29 @@ export class MCPConnection extends EventEmitter {
         isTransient,
       } = extractSSEErrorMessage(error);
 
-      if (errorCode === 400 || errorCode === 404 || errorCode === 405 || errorCode === 406) {
-        const hasSession =
-          'sessionId' in transport &&
-          (transport as { sessionId?: string }).sessionId != null &&
-          (transport as { sessionId?: string }).sessionId !== '';
+      const hasSession =
+        'sessionId' in transport &&
+        (transport as { sessionId?: string }).sessionId != null &&
+        (transport as { sessionId?: string }).sessionId !== '';
+      const isOptionalSseGetFailure =
+        transport instanceof StreamableHTTPClientTransport &&
+        ((errorObject != null && optionalStreamableHttpSseGetErrors.has(errorObject)) ||
+          rawMessage.startsWith(SDK_STREAMABLE_HTTP_SSE_OPEN_FAILED));
 
+      if (isOptionalSseGetFailure && !hasSession && !isOAuthAuthenticationError(error)) {
+        if (errorObject == null || !handledOptionalStreamableHttpSseGetErrors.has(errorObject)) {
+          const status = errorCode != null ? ` (${errorCode})` : '';
+          logger.warn(
+            `${this.getLogPrefix()} Optional SSE GET unavailable${status}, no server-assigned session ID; keeping Streamable HTTP POST channel active.`,
+          );
+          if (errorObject != null) {
+            handledOptionalStreamableHttpSseGetErrors.add(errorObject);
+          }
+        }
+        return;
+      }
+
+      if (errorCode === 400 || errorCode === 404 || errorCode === 405 || errorCode === 406) {
         if (!hasSession && errorMessage.toLowerCase().includes('failed to open sse stream')) {
           logger.warn(
             `${this.getLogPrefix()} SSE stream not available (${errorCode}), no session. Ignoring.`,
