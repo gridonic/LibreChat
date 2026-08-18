@@ -1,6 +1,5 @@
-import { Run, Constants, Providers, GraphEvents, StandardGraph } from '@librechat/agents';
 import { AIMessage } from '@librechat/agents/langchain/messages';
-
+import { Run, Constants, Providers, GraphEvents, StandardGraph } from '@librechat/agents';
 import type { AgentInputs, GenericTool, IState, LCTool } from '@librechat/agents';
 
 interface ForwarderCallback {
@@ -24,11 +23,21 @@ interface ToolExecuteResult {
   content: string;
 }
 
+function isSubagentTool(candidate: unknown): candidate is GenericTool {
+  return (
+    candidate != null &&
+    typeof candidate === 'object' &&
+    'name' in candidate &&
+    candidate.name === Constants.SUBAGENT &&
+    'invoke' in candidate &&
+    typeof candidate.invoke === 'function'
+  );
+}
+
 function findSubagentTool(graph: StandardGraph): GenericTool {
   const context = [...graph.agentContexts.values()][0];
-  const tool = context?.graphTools?.find(
-    (candidate: GenericTool) => 'name' in candidate && candidate.name === Constants.SUBAGENT,
-  );
+  const tools: unknown[] = context?.graphTools ? Array.from(context.graphTools) : [];
+  const tool = tools.find(isSubagentTool);
 
   if (!tool) {
     throw new Error('Expected subagent tool');
