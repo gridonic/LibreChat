@@ -636,14 +636,16 @@ describe('MCPConnection SSE 404 handling – session-aware', () => {
     mockLogger.error.mockClear();
   });
 
-  it('silently ignores a 404 when no session is established (backwards-compat probe)', () => {
+  it('silently ignores a 404 when no session ID is assigned (backwards-compat probe)', () => {
     const conn = makeConn();
     const transport = makeTransportStub();
     const emitSpy = jest.spyOn(conn, 'emit');
 
     fireSSEError(conn, transport);
 
-    expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('no session'));
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('no server-assigned session ID'),
+    );
     expect(emitSpy).not.toHaveBeenCalledWith('connectionChange', 'error');
   });
 
@@ -658,7 +660,7 @@ describe('MCPConnection SSE 404 handling – session-aware', () => {
     expect(emitSpy).toHaveBeenCalledWith('connectionChange', 'error');
   });
 
-  it('treats an empty-string sessionId as no session (guards against falsy sessionId)', () => {
+  it('treats an empty-string sessionId as no assigned session ID', () => {
     const conn = makeConn();
     const transport = makeTransportStub('');
     const emitSpy = jest.spyOn(conn, 'emit');
@@ -668,14 +670,16 @@ describe('MCPConnection SSE 404 handling – session-aware', () => {
     expect(emitSpy).not.toHaveBeenCalledWith('connectionChange', 'error');
   });
 
-  it('treats a 406 before session establishment as an unsupported optional SSE stream', () => {
+  it('treats a 406 before a session ID is assigned as an unsupported optional SSE stream', () => {
     const conn = makeConn();
     const transport = makeTransportStub();
     const emitSpy = jest.spyOn(conn, 'emit');
 
     fireSSEError(conn, transport, 406);
 
-    expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('no session'));
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('no server-assigned session ID'),
+    );
     expect(emitSpy).not.toHaveBeenCalledWith('connectionChange', 'error');
   });
 
@@ -733,6 +737,24 @@ describe('MCPConnection SSE 404 handling – session-aware', () => {
 
     expect(emitSpy).toHaveBeenCalledWith('oauthError', expect.any(Error));
     expect(emitSpy).not.toHaveBeenCalledWith('connectionChange', 'error');
+  });
+
+  it('does not mistake a POST response error for an optional SSE GET failure', () => {
+    const conn = makeStreamableConn();
+    const transport = new StreamableHTTPClientTransport(new URL('http://127.0.0.1:1/mcp'));
+    const emitSpy = jest.spyOn(conn, 'emit');
+    (
+      conn as unknown as { setupTransportErrorHandlers: (t: unknown) => void }
+    ).setupTransportErrorHandlers(transport);
+
+    transport.onerror?.(
+      Object.assign(
+        new Error('Streamable HTTP error: Error POSTing to endpoint: Failed to open SSE stream'),
+        { code: 400 },
+      ),
+    );
+
+    expect(emitSpy).toHaveBeenCalledWith('connectionChange', 'error');
   });
 
   it('keeps a sessionless POST channel active when the optional GET fails before headers', async () => {
