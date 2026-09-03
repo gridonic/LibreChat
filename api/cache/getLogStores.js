@@ -11,7 +11,7 @@ const {
   registerShutdownTask,
 } = require('@librechat/api');
 
-/** No-op store registered when the user principals cache is disabled (TTL of 0). */
+/** No-op store for cache namespaces that are deliberately disabled. */
 const disabledCache = {
   get: async () => undefined,
   set: async () => undefined,
@@ -46,6 +46,8 @@ const namespaces = {
 
   [CacheKeys.ROLES]: standardCache(CacheKeys.ROLES),
   [CacheKeys.USER_PRINCIPALS]: userPrincipalsCache() ?? disabledCache,
+  /** Authorization IDs stay uncached because a failed shared invalidation cannot fail closed. */
+  [CacheKeys.PROMPT_GROUPS_ACCESS]: disabledCache,
   [CacheKeys.APP_CONFIG]: standardCache(CacheKeys.APP_CONFIG),
   [CacheKeys.CONFIG_STORE]: standardCache(CacheKeys.CONFIG_STORE),
   [CacheKeys.TOOL_CACHE]: standardCache(CacheKeys.TOOL_CACHE),
@@ -63,6 +65,7 @@ const namespaces = {
     CacheKeys.OPENID_EXCHANGED_TOKENS,
     Time.TEN_MINUTES,
   ),
+  [CacheKeys.AUTH_USER_DOC]: standardCache(CacheKeys.AUTH_USER_DOC),
   [CacheKeys.ADMIN_OAUTH_EXCHANGE]: standardCache(
     CacheKeys.ADMIN_OAUTH_EXCHANGE,
     Time.THIRTY_SECONDS,

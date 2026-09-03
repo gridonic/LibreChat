@@ -10,11 +10,17 @@ const {
 const { isEphemeralAgentId } = require('librechat-data-provider');
 const { filterFilesByAgentAccess } = require('~/server/services/Files/permissions');
 const { getMCPServerTools } = require('~/server/services/Config');
-const { canAuthorSkillFiles } = require('./skillDeps');
+const { getAccessibleMcpServerNames, getAccessibleMCPServers } = require('~/server/services/MCP');
+const { isFatalAgentInitializationError } = require('~/server/services/ToolService');
+const { getSkillDbMethods, canAuthorSkillFiles } = require('./skillDeps');
 const db = require('~/models');
 
 const loadAddedAgent = (params) =>
-  loadAddedAgentFn(params, { getAgent: db.getAgent, getMCPServerTools });
+  loadAddedAgentFn(params, {
+    getAgent: db.getAgent,
+    getMCPServerTools,
+    getAccessibleMCPServers,
+  });
 
 /**
  * Process addedConvo for parallel agent execution.
@@ -40,6 +46,7 @@ const loadAddedAgent = (params) =>
  * @param {Array} params.requestFiles - Request files
  * @param {string} params.conversationId - The conversation ID
  * @param {string} [params.parentMessageId] - The parent message ID for thread filtering
+ * @param {import('@librechat/api').MCPRuntimeRequestBody} [params.requestBody]
  * @param {Set} params.allowedProviders - Set of allowed providers
  * @param {Map} params.agentConfigs - Map of agent configs to add to
  * @param {string} params.primaryAgentId - The primary agent ID
@@ -54,6 +61,8 @@ const loadAddedAgent = (params) =>
  * @param {boolean} [params.codeEnvAvailable] - `execute_code` capability flag;
  *   forwarded verbatim to the added agent's `initializeAgent`. @see
  *   InitializeAgentParams.codeEnvAvailable for full semantics.
+ * @param {boolean} [params.statefulSessionsAvailable] - `stateful_code_sessions`
+ *   capability flag; forwarded verbatim alongside `codeEnvAvailable`.
  * @returns {Promise<{userMCPAuthMap: Object|undefined}>} The updated userMCPAuthMap
  */
 const processAddedConvo = async ({
@@ -66,6 +75,7 @@ const processAddedConvo = async ({
   requestFiles,
   conversationId,
   parentMessageId,
+  requestBody,
   allowedProviders,
   agentConfigs,
   primaryAgentId,
@@ -79,6 +89,9 @@ const processAddedConvo = async ({
   skillStates,
   defaultActiveOnShare,
   codeEnvAvailable,
+  backgroundToolsAvailable,
+  toolIntentsAvailable,
+  statefulSessionsAvailable,
   memoryAvailable,
 }) => {
   const addedConvo = endpointOption.addedConvo;
@@ -93,6 +106,7 @@ const processAddedConvo = async ({
   });
 
   try {
+    const skillDbMethods = getSkillDbMethods();
     const addedAgent = await loadAddedAgent({ req, conversation: addedConvo, primaryAgent });
     if (!addedAgent) {
       return { userMCPAuthMap };
@@ -134,7 +148,7 @@ const processAddedConvo = async ({
         const resolvedSkillIds = await resolveModelSpecSkillIds({
           names: selectedModelSpec.skills,
           accessibleSkillIds,
-          getSkillByName: db.getSkillByName,
+          getSkillByName: skillDbMethods.getSkillByName,
         });
         addedAgent.skills_enabled = true;
         addedAgent.skills = resolvedSkillIds.map((id) => id.toString());
@@ -162,6 +176,7 @@ const processAddedConvo = async ({
         requestFiles,
         conversationId,
         parentMessageId,
+        requestBody,
         agent: addedAgent,
         endpointOption,
         allowedProviders,
@@ -174,6 +189,9 @@ const processAddedConvo = async ({
           ephemeralSkillsToggle,
         }),
         codeEnvAvailable,
+        backgroundToolsAvailable,
+        toolIntentsAvailable,
+        statefulSessionsAvailable,
         memoryAvailable,
         skillStates,
         defaultActiveOnShare,
@@ -183,15 +201,16 @@ const processAddedConvo = async ({
         getUserKey: db.getUserKey,
         getMessages: db.getMessages,
         getConvoFiles: db.getConvoFiles,
+        getAccessibleMcpServerNames,
         updateFilesUsage: db.updateFilesUsage,
         getUserCodeFiles: db.getUserCodeFiles,
         getUserKeyValues: db.getUserKeyValues,
         getToolFilesByIds: db.getToolFilesByIds,
         getCodeGeneratedFiles: db.getCodeGeneratedFiles,
         filterFilesByAgentAccess,
-        listSkillsByAccess: db.listSkillsByAccess,
-        listAlwaysApplySkills: db.listAlwaysApplySkills,
-        getSkillByName: db.getSkillByName,
+        listSkillsByAccess: skillDbMethods.listSkillsByAccess,
+        listAlwaysApplySkills: skillDbMethods.listAlwaysApplySkills,
+        getSkillByName: skillDbMethods.getSkillByName,
       },
     );
 
@@ -215,6 +234,9 @@ const processAddedConvo = async ({
 
     return { userMCPAuthMap };
   } catch (err) {
+    if (isFatalAgentInitializationError(err)) {
+      throw err;
+    }
     logger.error('[processAddedConvo] Error processing addedConvo for parallel agent', err);
     return { userMCPAuthMap };
   }
