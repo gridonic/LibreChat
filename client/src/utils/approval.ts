@@ -1,5 +1,6 @@
 import { ContentTypes } from 'librechat-data-provider';
 import type { Agents, TMessage, TMessageContentParts } from 'librechat-data-provider';
+import { isOAuthToolCallContent } from './oauth';
 
 /**
  * UI-only content-part type used to render an `ask_user_question` pause inline
@@ -197,7 +198,11 @@ function applyAskUserQuestion(
     nextContent[existingIdx] = askPart;
     return { ...message, content: nextContent };
   }
-  return { ...message, content: [...content, askPart] };
+  // The pause occupies the next model slot, before synthetic OAuth rows.
+  const oauthIndex = content.findIndex(isOAuthToolCallContent);
+  const nextContent = [...content];
+  nextContent.splice(oauthIndex < 0 ? nextContent.length : oauthIndex, 0, askPart);
+  return { ...message, content: nextContent };
 }
 
 /**

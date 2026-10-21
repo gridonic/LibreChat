@@ -44,6 +44,7 @@ import {
   ptcTraceKey,
 } from '~/store';
 import { isAskUserQuestionPart, isAnsweredAskUserQuestionPart } from '~/utils/approval';
+import { isOAuthToolCallName, isOAuthToolCallContent } from '~/utils/oauth';
 import { MESSAGE_UPDATE_INTERVAL } from '~/common';
 
 type TUseStepHandler = {
@@ -148,18 +149,6 @@ function isSkillAuthoringToolCall(toolCall?: Agents.ToolCall): boolean {
   return typeof filePath === 'string' && filePath.startsWith(SKILL_FILE_PREFIX);
 }
 
-const isOAuthToolCallName = (name?: string) =>
-  typeof name === 'string' && name.startsWith(`oauth${Constants.mcp_delimiter}`);
-
-const isOAuthToolCallContent = (part?: Partial<TMessageContentParts>) => {
-  if (part?.type !== ContentTypes.TOOL_CALL || !('tool_call' in part)) {
-    return false;
-  }
-  const { tool_call: toolCall } = part;
-  const name = toolCall != null && 'name' in toolCall ? toolCall.name : undefined;
-  return isOAuthToolCallName(name);
-};
-
 export default function useStepHandler({
   setMessages,
   getMessages,
@@ -169,6 +158,7 @@ export default function useStepHandler({
   onSubagentIndexChange,
 }: TUseStepHandler) {
   const subagentStore = useStore();
+  const currentResponseId = useRef<string>();
   const toolCallIdMap = useRef(new Map<string, string | undefined>());
   const firstFragmentByCall = useRef(new Map<string, number>());
   const firstFragmentByStep = useRef(new Map<string, number>());
@@ -519,21 +509,56 @@ export default function useStepHandler({
       'tool_call' in contentPart &&
       isOAuthToolCallName(contentPart.tool_call?.name);
 
-    let updatedContent = [...(message.content || [])] as Array<
-      Partial<TMessageContentParts> | undefined
-    >;
-
-    const oauthPromptOccupiesSlot = isOAuthToolCallContent(updatedContent[index]);
-    if (!incomingOAuthToolCall && oauthPromptOccupiesSlot) {
-      updatedContent = updatedContent.filter((part) => !isOAuthToolCallContent(part));
+    // Synthetic OAuth rows share neither the model's index space nor each other's slot.
+    const hasOAuth =
+      incomingOAuthToolCall ||
+      isOAuthToolCallContent(message.content?.[(message.content?.length ?? 0) - 1]);
+    const modelContent: Array<Partial<TMessageContentParts> | undefined> = hasOAuth
+      ? []
+      : [...(message.content ?? [])];
+    const oauthContent: Array<Partial<TMessageContentParts> | undefined> = [];
+    if (hasOAuth) {
+      for (const part of message.content ?? []) {
+        (isOAuthToolCallContent(part) ? oauthContent : modelContent).push(part);
+      }
     }
-
+    let updatedContent = incomingOAuthToolCall ? oauthContent : modelContent;
+    if (incomingOAuthToolCall && 'tool_call' in contentPart) {
+      const incomingId = contentPart.tool_call?.id;
+      const incomingStepId = contentPart.tool_call?.stepId;
+      const existingIndex = oauthContent.findIndex((part) => {
+        if (part?.type !== ContentTypes.TOOL_CALL || !('tool_call' in part) || !part.tool_call)
+          return false;
+        return (
+          (incomingId && part.tool_call.id === incomingId) ||
+          (!finalUpdate &&
+            incomingStepId &&
+            'stepId' in part.tool_call &&
+            part.tool_call.stepId === incomingStepId)
+        );
+      });
+      if (finalUpdate) {
+        if (existingIndex >= 0) oauthContent.splice(existingIndex, 1);
+        return {
+          ...message,
+          content: [...modelContent, ...oauthContent] as TMessageContentParts[],
+        };
+      }
+      const existing = oauthContent[existingIndex];
+      if (
+        existing?.type === ContentTypes.TOOL_CALL &&
+        'tool_call' in existing &&
+        existing.tool_call?.id !== incomingId
+      ) {
+        oauthContent[existingIndex] = undefined;
+      }
+      index = existingIndex >= 0 ? existingIndex : oauthContent.length;
+    }
     /**
      * The synthetic ask-user-question card is pause-scoped UI appended at the end
      * of the content — exactly the ABSOLUTE index the resumed segment streams
      * into. Once real content arrives for that slot the pause is over: displace
-     * the card (same displacement pattern as the OAuth prompt above) instead of
-     * dropping the incoming part as a type mismatch. Covers the streaming
+     * the card instead of dropping the incoming part as a type mismatch. Covers the streaming
      * handler's own in-flight message copy, reconnecting tabs, and other devices
      * — the store-level strip on answer submit can't reach those.
      */
@@ -656,8 +681,12 @@ export default function useStepHandler({
         args,
         stepId: getNonEmptyValue([contentPart.tool_call.stepId, existingToolCall?.stepId]),
         type: ToolCallTypes.TOOL_CALL,
-        auth: contentPart.tool_call.auth,
-        expires_at: contentPart.tool_call.expires_at,
+        auth: incomingOAuthToolCall
+          ? (contentPart.tool_call.auth ?? existingToolCall?.auth)
+          : contentPart.tool_call.auth,
+        expires_at: incomingOAuthToolCall
+          ? (contentPart.tool_call.expires_at ?? existingToolCall?.expires_at)
+          : contentPart.tool_call.expires_at,
         toolPreparationStartedAt:
           contentPart.tool_call.toolPreparationStartedAt ??
           existingToolCall?.toolPreparationStartedAt,
@@ -694,7 +723,21 @@ export default function useStepHandler({
       }
     }
 
-    return { ...message, content: updatedContent as TMessageContentParts[] };
+    let content = updatedContent;
+    if (incomingOAuthToolCall) {
+      content = [...modelContent, ...updatedContent];
+    } else if (oauthContent.length > 0) {
+      content = [
+        ...updatedContent,
+        ...oauthContent.filter(
+          (part) =>
+            part?.type === ContentTypes.TOOL_CALL &&
+            'tool_call' in part &&
+            part.tool_call?.auth != null,
+        ),
+      ];
+    }
+    return { ...message, content: content as TMessageContentParts[] };
   };
 
   /** Extract metadata from runStep for parallel content rendering */
@@ -903,7 +946,19 @@ export default function useStepHandler({
       }
 
       if (stepEvent.event === StepEvents.ON_RUN_STEP) {
-        const runStep = stepEvent.data;
+        let runStep = stepEvent.data;
+        if (runStep.runId && runStep.runId !== Constants.USE_PRELIM_RESPONSE_MESSAGE_ID) {
+          currentResponseId.current = runStep.runId;
+        } else if (
+          runStep.runId === Constants.USE_PRELIM_RESPONSE_MESSAGE_ID &&
+          currentResponseId.current &&
+          runStep.stepDetails.type === StepTypes.TOOL_CALLS &&
+          runStep.stepDetails.tool_calls?.some(
+            (call) => 'name' in call && isOAuthToolCallName(call.name),
+          )
+        ) {
+          runStep = { ...runStep, runId: currentResponseId.current };
+        }
         let responseMessageId = runStep.runId ?? '';
         if (responseMessageId === Constants.USE_PRELIM_RESPONSE_MESSAGE_ID) {
           responseMessageId = submission?.initialResponse?.messageId ?? '';
@@ -1492,6 +1547,38 @@ export default function useStepHandler({
           return;
         }
 
+        const oauthCalls =
+          runStep.stepDetails.type === StepTypes.TOOL_CALLS
+            ? (runStep.stepDetails.tool_calls ?? []).filter(
+                (call) => 'name' in call && isOAuthToolCallName(call.name),
+              )
+            : [];
+        if (oauthCalls.length > 0) {
+          let updatedResponse = response;
+          for (const call of oauthCalls) {
+            const key = toolTimingKey(closed.id, call.id ?? '');
+            firstFragmentByCall.current.delete(key);
+            dispatchedByCall.current.delete(key);
+            completedByCall.current.delete(key);
+            updatedResponse = updateContent(
+              updatedResponse,
+              0,
+              {
+                type: ContentTypes.TOOL_CALL,
+                tool_call: { ...call, stepId: closed.id },
+              },
+              true,
+            );
+          }
+          firstFragmentByStep.current.delete(closed.id);
+          messageMap.current.set(responseMessageId, updatedResponse);
+          setMessages(
+            mergeResponseMessage(messages, updatedResponse, responseMessageId, {
+              ensureUserMessage: true,
+            }),
+          );
+          return;
+        }
         const currentIndex = runStep.index + editPrefixOffset;
         const existing = response.content?.[currentIndex];
         /**
@@ -1746,6 +1833,7 @@ export default function useStepHandler({
     firstFragmentByStep.current.clear();
     dispatchedByCall.current.clear();
     completedByCall.current.clear();
+    currentResponseId.current = undefined;
     messageMap.current.clear();
     stepMap.current.clear();
     pendingDeltaBuffer.current.clear();
