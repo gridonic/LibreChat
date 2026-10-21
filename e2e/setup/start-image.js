@@ -55,6 +55,14 @@ async function main() {
     JWT_REFRESH_SECRET: crypto.randomBytes(32).toString('hex'),
     LIBRECHAT_TEST_RUN_HOOK: '/app/e2e/setup/fake-model.js',
   });
+  if (process.env.E2E_LATENCY_MONGO_DELAY_MS === '250') {
+    Object.assign(env, {
+      ENDPOINTS: 'openAI',
+      OPENAI_MODELS: 'gpt-4o-mini',
+      E2E_LATENCY_MONGO_DELAY_MS: '250',
+      NODE_OPTIONS: '--require=/app/e2e/benchmarks/mongoose-latency-hook.cjs',
+    });
+  }
   const envFile = path.join(temp, 'test.env');
   fs.writeFileSync(
     envFile,
@@ -82,6 +90,8 @@ async function main() {
     args.push('--tmpfs', `${target}:uid=1001,gid=1001,mode=0700`);
   }
   args.push(
+    '--mount',
+    `type=bind,src=${path.resolve(__dirname, '../benchmarks')},dst=/app/e2e/benchmarks,readonly`,
     '--mount',
     `type=bind,src=${__dirname},dst=/app/e2e/setup,readonly`,
     '--mount',
