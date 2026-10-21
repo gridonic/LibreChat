@@ -123,6 +123,7 @@ import { buildToolApprovalHooks } from '~/agents/hitl/hooks';
 import { getAgentCheckpointer } from '~/agents/checkpointer';
 import { getPluginHookSource } from '~/agents/hooks/source';
 import { getOpenAIConfig } from '~/endpoints/openai/config';
+import { reportSubagentResolutionFailure } from './errors';
 import { createStepBudgetHook } from '~/agents/stepBudget';
 import { buildHITLRunWiring } from '~/agents/hitl/runtime';
 import { buildLangfuseConfig } from '~/langfuse/config';
@@ -2915,6 +2916,7 @@ export async function createRun({
     fadingTiers,
     indexTokenCountMap,
     subagentUsageSink,
+    onSubagentResolutionFailure: reportSubagentResolutionFailure,
     subagentTasks: activeSubagentTasks,
     ...(runFilesActive &&
       runFiles != null && {
