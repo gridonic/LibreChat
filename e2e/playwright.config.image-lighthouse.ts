@@ -9,6 +9,10 @@ if (process.env.E2E_BASE_URL !== 'http://127.0.0.1:3101') {
 export default defineConfig({
   ...lighthouseConfig,
   webServer: (Array.isArray(lighthouseConfig.webServer) ? lighthouseConfig.webServer : []).map(
-    (server) => ({ ...server, command: `node ${path.resolve(__dirname, 'setup/start-image.js')}` }),
+    (server) => ({
+      ...server,
+      command: `node ${path.resolve(__dirname, 'setup/start-image.js')}`,
+      gracefulShutdown: { signal: 'SIGTERM', timeout: 15000 },
+    }),
   ),
 });

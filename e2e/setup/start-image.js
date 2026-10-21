@@ -12,14 +12,15 @@ if (!image?.startsWith('gridonic/librechat:') || process.env.PORT !== '3101') {
 const name = `librechat-mcp-image-e2e-${process.pid}`;
 let mongo;
 let temp;
-let stopping = false;
+let shutdown;
 
-async function stop() {
-  if (stopping) return;
-  stopping = true;
-  spawnSync('docker', ['stop', '--time', '5', name], { stdio: 'ignore' });
-  if (mongo) await mongo.stop();
-  if (temp) fs.rmSync(temp, { recursive: true });
+function stop() {
+  shutdown ??= (async () => {
+    spawnSync('docker', ['stop', '--timeout', '5', name], { stdio: 'ignore' });
+    if (mongo) await mongo.stop();
+    if (temp) fs.rmSync(temp, { recursive: true });
+  })();
+  return shutdown;
 }
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.once(signal, async () => {

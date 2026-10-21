@@ -13,7 +13,11 @@ export default defineConfig({
   testMatch: ['**/mcp-oauth-subagent.spec.ts', '**/mcp-oauth-resume.spec.ts'],
   webServer: (Array.isArray(mockConfig.webServer) ? mockConfig.webServer : []).map((server) =>
     server.command.endsWith('start-server.js')
-      ? { ...server, command: `node ${path.resolve(__dirname, 'setup/start-image.js')}` }
+      ? {
+          ...server,
+          command: `node ${path.resolve(__dirname, 'setup/start-image.js')}`,
+          gracefulShutdown: { signal: 'SIGTERM', timeout: 15000 },
+        }
       : server,
   ),
 });
