@@ -3353,7 +3353,7 @@ describe('MCPOAuthHandler - Configurable OAuth Metadata', () => {
       );
 
       expect(mockExchangeAuthorization).toHaveBeenCalledTimes(1);
-      expect(mockExchangeAuthorization.mock.calls[0][1].resource?.href).toBe(
+      expect(mockExchangeAuthorization.mock.calls[0][1].resource?.toString()).toBe(
         'https://example.com/mcp',
       );
     });
