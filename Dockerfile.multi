@@ -27,6 +27,8 @@ RUN npm config set fetch-retry-maxtimeout 600000 && \
     npm config set fetch-retries 5 && \
     npm config set fetch-retry-mintimeout 15000
 COPY package*.json ./
+COPY scripts/apply-agents-patch.cjs ./scripts/apply-agents-patch.cjs
+COPY patches/agents-4.0.1-mcp-recovery.json ./patches/agents-4.0.1-mcp-recovery.json
 COPY packages/data-provider/package*.json ./packages/data-provider/
 COPY packages/api/package*.json ./packages/api/
 COPY packages/data-schemas/package*.json ./packages/data-schemas/

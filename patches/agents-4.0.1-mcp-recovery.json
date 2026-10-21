@@ -1,0 +1,526 @@
+{
+  "package": "@librechat/agents",
+  "version": "4.0.1",
+  "upstream": ["LibreChat-AI/agents#632", "LibreChat-AI/LibreChat#17302"],
+  "files": [
+    {
+      "path": "src/tools/subagent/diagnostics.ts",
+      "beforeSha256": "b4baeccf3f37ad95a2e1d68e6ffc721be9addf49ffb3c37ac9b0bdc99be93976",
+      "edits": [
+        {
+          "before": "export type SubagentResolutionPhase = 'identity' | 'config';",
+          "after": "export type SubagentResolutionPhase = 'identity' | 'config';\n\nconst SUBAGENT_RESOLUTION_MESSAGES = {\n  \"authentication_required\": \"Subagent error: Required tool authentication is incomplete. Complete the sign-in prompt before retrying.\",\n  \"tools_unavailable\": \"Subagent error: Required tools are unavailable. Retry later.\",\n  \"unknown\": \"Subagent error: Unable to initialize the selected subagent.\"\n} as const;\nexport type SubagentResolutionCause = keyof typeof SUBAGENT_RESOLUTION_MESSAGES;\nexport type SubagentResolutionFailureHandler = (\n  detail: Readonly<SubagentResolutionDiagnostic>, error: unknown\n) => SubagentResolutionCause | void;\nexport function getSubagentResolutionFailureMessage(cause: SubagentResolutionCause): string {\n  switch (cause) {\n    case 'authentication_required':\n    case 'tools_unavailable':\n      return SUBAGENT_RESOLUTION_MESSAGES[cause];\n    default:\n      return SUBAGENT_RESOLUTION_MESSAGES.unknown;\n  }\n}\n",
+          "count": 1
+        },
+        {
+          "before": "  type: SubagentErrorLabel;",
+          "after": "  type: SubagentErrorLabel;\n  cause: SubagentResolutionCause;\n  message: string;",
+          "count": 1
+        },
+        {
+          "before": "  error: unknown\n): void {",
+          "after": "  error: unknown,\n  onResolutionFailure?: SubagentResolutionFailureHandler\n): SubagentResolutionDiagnostic {",
+          "count": 1
+        },
+        {
+          "before": "    type: describeSubagentError(error),",
+          "after": "    type: describeSubagentError(error),\n    cause: 'unknown',\n    message: getSubagentResolutionFailureMessage('unknown'),",
+          "count": 1
+        },
+        {
+          "before": "  // eslint-disable-next-line no-console",
+          "after": "  if (onResolutionFailure != null && !signal.aborted) {\n    try {\n      const reported = onResolutionFailure(Object.freeze({ ...detail }), error);\n      const cause = reported === 'authentication_required' || reported === 'tools_unavailable'\n        ? reported : 'unknown';\n      return { ...detail, cause, message: getSubagentResolutionFailureMessage(cause) };\n    } catch {\n      // A broken host classifier must not disclose the original error.\n    }\n  }\n  // eslint-disable-next-line no-console",
+          "count": 1
+        },
+        {
+          "before": "  console.warn('[SubagentExecutor] Subagent resolution failed', detail);",
+          "after": "  console.warn('[SubagentExecutor] Subagent resolution failed', detail);\n  return detail;",
+          "count": 1
+        }
+      ],
+      "afterSha256": "6b939487285e49f6de72b557c9aa97be66d0c9a212bbe07f95aac821f3833f55"
+    },
+    {
+      "path": "src/types/run.ts",
+      "beforeSha256": "9e00fe2135602ae0b27798e84421d486a10c5f3efdee4a6ae821d7e863d7afde",
+      "edits": [
+        {
+          "before": "// src/types/run.ts\n",
+          "after": "import type { SubagentResolutionFailureHandler } from '@/tools/subagent/diagnostics';\n// src/types/run.ts\n",
+          "count": 1
+        },
+        {
+          "before": "  subagentContext?: g.SubagentContextAdapter;",
+          "after": "  subagentContext?: g.SubagentContextAdapter;\n  onSubagentResolutionFailure?: SubagentResolutionFailureHandler;",
+          "count": 1
+        }
+      ],
+      "afterSha256": "c0712bb54e31de7177edf8bfc4e14d80315c8022a2d25ce811f9bb56628326a8"
+    },
+    {
+      "path": "src/types/graph.ts",
+      "beforeSha256": "c86173de125f47a5675139de18115d014902637bb0ae5894d2a5285b4137744a",
+      "edits": [
+        {
+          "before": "// src/types/graph.ts\n",
+          "after": "import type { SubagentResolutionFailureHandler } from '@/tools/subagent/diagnostics';\n// src/types/graph.ts\n",
+          "count": 1
+        },
+        {
+          "before": "  subagentContext?: SubagentContextAdapter;",
+          "after": "  subagentContext?: SubagentContextAdapter;\n  onSubagentResolutionFailure?: SubagentResolutionFailureHandler;",
+          "count": 1
+        }
+      ],
+      "afterSha256": "e95f71487efd6276a2703a011a9f3f659d1e159d8e435a75d5b165ed1cdd9c3c"
+    },
+    {
+      "path": "src/tools/subagent/SubagentExecutor.ts",
+      "beforeSha256": "6a0c6214468bcd541e379fa9ac13ffd98fbc71d654a745ce6757f94661afddf5",
+      "edits": [
+        {
+          "before": "import { nanoid } from 'nanoid';\n",
+          "after": "import type { SubagentResolutionFailureHandler } from '@/tools/subagent/diagnostics';\nimport { nanoid } from 'nanoid';\n",
+          "count": 1
+        },
+        {
+          "before": "  subagentContext?: SubagentContextAdapter;",
+          "after": "  subagentContext?: SubagentContextAdapter;\n  onResolutionFailure?: SubagentResolutionFailureHandler;",
+          "count": 1
+        },
+        {
+          "before": "  private readonly subagentContext?: SubagentContextAdapter;",
+          "after": "  private readonly subagentContext?: SubagentContextAdapter;\n  private readonly onResolutionFailure?: SubagentResolutionFailureHandler;",
+          "count": 1
+        },
+        {
+          "before": "    this.subagentContext = options.subagentContext;",
+          "after": "    this.subagentContext = options.subagentContext;\n    this.onResolutionFailure = options.onResolutionFailure;",
+          "count": 1
+        },
+        {
+          "before": "      subagentContext: this.subagentContext,",
+          "after": "      subagentContext: this.subagentContext,\n      onSubagentResolutionFailure: this.onResolutionFailure,",
+          "count": 2
+        },
+        {
+          "before": "      logSubagentResolutionFailure(\n        'identity',\n        executableConfig.type,\n        childSignal,\n        error\n      );\n      return createSubagentFailure(SUBAGENT_RESOLUTION_ERROR_MESSAGE);",
+          "after": "      const failure = logSubagentResolutionFailure(\n        'identity',\n        executableConfig.type,\n        childSignal,\n        error,\n        this.onResolutionFailure\n      );\n      return createSubagentFailure(failure.message);",
+          "count": 1
+        },
+        {
+          "before": "      logSubagentResolutionFailure(\n        'config',\n        executableConfig.type,\n        childSignal,\n        error\n      );\n      return createSubagentFailure(SUBAGENT_RESOLUTION_ERROR_MESSAGE);",
+          "after": "      const failure = logSubagentResolutionFailure(\n        'config',\n        executableConfig.type,\n        childSignal,\n        error,\n        this.onResolutionFailure\n      );\n      return createSubagentFailure(failure.message);",
+          "count": 1
+        },
+        {
+          "before": "      usageSink: this.usageSink,\n      subagentContext: this.subagentContext,\n      onSubagentResolutionFailure: this.onResolutionFailure,",
+          "after": "      usageSink: this.usageSink,\n      subagentContext: this.subagentContext,\n      onResolutionFailure: this.onResolutionFailure,",
+          "count": 1
+        }
+      ],
+      "afterSha256": "c5206b8b1483262d0b6c94c948b801834dc6584fbaad123d00247a57af1b758b"
+    },
+    {
+      "path": "src/run.ts",
+      "beforeSha256": "eced12542de4bcbdddcce5dbdfcdbb52ea74a749745036d389b4643057288304",
+      "edits": [
+        {
+          "before": "// src/run.ts\n",
+          "after": "import type { SubagentResolutionFailureHandler } from '@/tools/subagent/diagnostics';\n// src/run.ts\n",
+          "count": 1
+        },
+        {
+          "before": "  private subagentContext?: t.SubagentContextAdapter;",
+          "after": "  private subagentContext?: t.SubagentContextAdapter;\n  private onSubagentResolutionFailure?: SubagentResolutionFailureHandler;",
+          "count": 1
+        },
+        {
+          "before": "    this.subagentContext = config.subagentContext;",
+          "after": "    this.subagentContext = config.subagentContext;\n    this.onSubagentResolutionFailure = config.onSubagentResolutionFailure;",
+          "count": 1
+        },
+        {
+          "before": "        subagentContext: this.subagentContext,",
+          "after": "        subagentContext: this.subagentContext,\n        onSubagentResolutionFailure: this.onSubagentResolutionFailure,",
+          "count": 2
+        }
+      ],
+      "afterSha256": "e722f70fd3908c13c176e0d125d06143bcf1e283ec915ee16acb7a9cc3e7462c"
+    },
+    {
+      "path": "src/graphs/Graph.ts",
+      "beforeSha256": "6b86604cdc1eb48873217561697f2e31538aea8ade1c8c78f76da6f31c5ceaae",
+      "edits": [
+        {
+          "before": "/* eslint-disable no-console */\n",
+          "after": "import type { SubagentResolutionFailureHandler } from '@/tools/subagent/diagnostics';\n/* eslint-disable no-console */\n",
+          "count": 1
+        },
+        {
+          "before": "  private readonly subagentContext?: t.SubagentContextAdapter;",
+          "after": "  private readonly subagentContext?: t.SubagentContextAdapter;\n  private readonly onSubagentResolutionFailure?: SubagentResolutionFailureHandler;",
+          "count": 1
+        },
+        {
+          "before": "      subagentContext,",
+          "after": "      subagentContext,\n      onSubagentResolutionFailure,",
+          "count": 1
+        },
+        {
+          "before": "    this.subagentContext = subagentContext;",
+          "after": "    this.subagentContext = subagentContext;\n    this.onSubagentResolutionFailure = onSubagentResolutionFailure;",
+          "count": 1
+        },
+        {
+          "before": "          subagentContext: this.subagentContext,",
+          "after": "          subagentContext: this.subagentContext,\n          onResolutionFailure: this.onSubagentResolutionFailure,",
+          "count": 1
+        }
+      ],
+      "afterSha256": "4f1269fac5eff71457edeb05df7fe278639c5eb7cb4377f06577db85503d9fcf"
+    },
+    {
+      "path": "dist/cjs/tools/subagent/diagnostics.cjs",
+      "beforeSha256": "c5d222c34f90e43ec66e86a228affb219b0eea0af36b49268d841a6c68e7fd5e",
+      "edits": [
+        {
+          "before": "function logSubagentResolutionFailure(phase, subagentType, signal, error) {",
+          "after": "const SUBAGENT_RESOLUTION_MESSAGES = {\n  \"authentication_required\": \"Subagent error: Required tool authentication is incomplete. Complete the sign-in prompt before retrying.\",\n  \"tools_unavailable\": \"Subagent error: Required tools are unavailable. Retry later.\",\n  \"unknown\": \"Subagent error: Unable to initialize the selected subagent.\"\n};\nfunction getSubagentResolutionFailureMessage(cause) {\n  switch (cause) {\n    case 'authentication_required':\n    case 'tools_unavailable':\n      return SUBAGENT_RESOLUTION_MESSAGES[cause];\n    default: return SUBAGENT_RESOLUTION_MESSAGES.unknown;\n  }\n}\nfunction logSubagentResolutionFailure(phase, subagentType, signal, error, onResolutionFailure) {",
+          "count": 1
+        },
+        {
+          "before": "\t\ttype: describeSubagentError(error)",
+          "after": "\t\ttype: describeSubagentError(error),\n    cause: \"unknown\",\n    message: getSubagentResolutionFailureMessage(\"unknown\")",
+          "count": 1
+        },
+        {
+          "before": "\tconsole.warn(\"[SubagentExecutor] Subagent resolution failed\", detail);",
+          "after": "  if (onResolutionFailure != null && !signal.aborted) {\n    try {\n      const reported = onResolutionFailure(Object.freeze({ ...detail }), error);\n      const cause = reported === 'authentication_required' || reported === 'tools_unavailable'\n        ? reported : 'unknown';\n      return { ...detail, cause, message: getSubagentResolutionFailureMessage(cause) };\n    } catch {}\n  }\n\tconsole.warn(\"[SubagentExecutor] Subagent resolution failed\", detail);\n  return detail;",
+          "count": 1
+        },
+        {
+          "before": "exports.logSubagentResolutionFailure = logSubagentResolutionFailure;",
+          "after": "exports.logSubagentResolutionFailure = logSubagentResolutionFailure;\nexports.getSubagentResolutionFailureMessage = getSubagentResolutionFailureMessage;",
+          "count": 1
+        }
+      ],
+      "afterSha256": "704d210f5c81ede1fbf2d4fdc3c8720705570a7448d3c6033abb03a7022533e3"
+    },
+    {
+      "path": "dist/cjs/run.cjs",
+      "beforeSha256": "37add4a767deed4c597269d853652c08cec38ac07f757f246987834976d8e224",
+      "edits": [
+        {
+          "before": "\tsubagentContext;",
+          "after": "\tsubagentContext;\n\tonSubagentResolutionFailure;",
+          "count": 1
+        },
+        {
+          "before": "\t\tthis.subagentContext = config.subagentContext;",
+          "after": "\t\tthis.subagentContext = config.subagentContext;\n\t\tthis.onSubagentResolutionFailure = config.onSubagentResolutionFailure;",
+          "count": 1
+        },
+        {
+          "before": "subagentContext: this.subagentContext,",
+          "after": "subagentContext: this.subagentContext,\n        onSubagentResolutionFailure: this.onSubagentResolutionFailure,",
+          "count": 2
+        }
+      ],
+      "afterSha256": "a91023d3c44e903f00532e2f8800444906aa2b53f8577b7c7ee8763e46b00369"
+    },
+    {
+      "path": "dist/cjs/graphs/Graph.cjs",
+      "beforeSha256": "851fe962cd3e33da3c154578e968f8376612cdd3c267499ab781fae30ea712fc",
+      "edits": [
+        {
+          "before": "\tsubagentContext;",
+          "after": "\tsubagentContext;\n\tonSubagentResolutionFailure;",
+          "count": 1
+        },
+        {
+          "before": "subagentContext, preemption",
+          "after": "subagentContext, onSubagentResolutionFailure, preemption",
+          "count": 1
+        },
+        {
+          "before": "\t\tthis.subagentContext = subagentContext;",
+          "after": "\t\tthis.subagentContext = subagentContext;\n\t\tthis.onSubagentResolutionFailure = onSubagentResolutionFailure;",
+          "count": 1
+        },
+        {
+          "before": "subagentContext: this.subagentContext,",
+          "after": "subagentContext: this.subagentContext,\n          onResolutionFailure: this.onSubagentResolutionFailure,",
+          "count": 1
+        }
+      ],
+      "afterSha256": "ed95fa8b4fdbd7b33fd49561c1644a36dd7b1e8126475843485c8d22843ec5f9"
+    },
+    {
+      "path": "dist/cjs/tools/subagent/SubagentExecutor.cjs",
+      "beforeSha256": "ae0c2e10b66f7ec5b236336cafb39acde27dabefd47d7880e48f414475d00448",
+      "edits": [
+        {
+          "before": "\tsubagentContext;",
+          "after": "\tsubagentContext;\n\tonResolutionFailure;",
+          "count": 1
+        },
+        {
+          "before": "\t\tthis.subagentContext = options.subagentContext;",
+          "after": "\t\tthis.subagentContext = options.subagentContext;\n\t\tthis.onResolutionFailure = options.onResolutionFailure;",
+          "count": 1
+        },
+        {
+          "before": "subagentContext: this.subagentContext,",
+          "after": "subagentContext: this.subagentContext,\n      onSubagentResolutionFailure: this.onResolutionFailure,",
+          "count": 2
+        },
+        {
+          "before": "require_diagnostics.logSubagentResolutionFailure(\"identity\", executableConfig.type, childSignal, error);\n\t\t\treturn createSubagentFailure(SUBAGENT_RESOLUTION_ERROR_MESSAGE);",
+          "after": "const failure = require_diagnostics.logSubagentResolutionFailure(\"identity\", executableConfig.type, childSignal, error, this.onResolutionFailure);\n\t\t\treturn createSubagentFailure(failure.message);",
+          "count": 1
+        },
+        {
+          "before": "require_diagnostics.logSubagentResolutionFailure(\"config\", executableConfig.type, childSignal, error);\n\t\t\treturn createSubagentFailure(SUBAGENT_RESOLUTION_ERROR_MESSAGE);",
+          "after": "const failure = require_diagnostics.logSubagentResolutionFailure(\"config\", executableConfig.type, childSignal, error, this.onResolutionFailure);\n\t\t\treturn createSubagentFailure(failure.message);",
+          "count": 1
+        },
+        {
+          "before": "\t\t\tusageSink: this.usageSink,\n\t\t\tsubagentContext: this.subagentContext,\n      onSubagentResolutionFailure: this.onResolutionFailure,",
+          "after": "\t\t\tusageSink: this.usageSink,\n\t\t\tsubagentContext: this.subagentContext,\n      onResolutionFailure: this.onResolutionFailure,",
+          "count": 1
+        }
+      ],
+      "afterSha256": "4b876bda589dc9ddfde434874c93843801a48870e1b21a3603466228fc19332d"
+    },
+    {
+      "path": "dist/cjs/main.cjs",
+      "beforeSha256": "3dda889feee39c262484b992ca42d00e39e29ea0121a619fe6c035d65b4055ef",
+      "edits": [
+        {
+          "before": "Object.defineProperty(exports, Symbol.toStringTag, { value: \"Module\" });",
+          "after": "Object.defineProperty(exports, Symbol.toStringTag, { value: \"Module\" });\nexports.getSubagentResolutionFailureMessage = require(\"./tools/subagent/diagnostics.cjs\").getSubagentResolutionFailureMessage;",
+          "count": 1
+        }
+      ],
+      "afterSha256": "5d3b81d85d22498515ae9c3ea5d3e9d9d339ac34eb415ce8737566372c98314e"
+    },
+    {
+      "path": "dist/esm/tools/subagent/diagnostics.mjs",
+      "beforeSha256": "5ff51ee4c8f5d04802cf1d0d369ff50cd6b58fee315dced9071c1fa90cb46ca4",
+      "edits": [
+        {
+          "before": "function logSubagentResolutionFailure(phase, subagentType, signal, error) {",
+          "after": "const SUBAGENT_RESOLUTION_MESSAGES = {\n  \"authentication_required\": \"Subagent error: Required tool authentication is incomplete. Complete the sign-in prompt before retrying.\",\n  \"tools_unavailable\": \"Subagent error: Required tools are unavailable. Retry later.\",\n  \"unknown\": \"Subagent error: Unable to initialize the selected subagent.\"\n};\nfunction getSubagentResolutionFailureMessage(cause) {\n  switch (cause) {\n    case 'authentication_required':\n    case 'tools_unavailable':\n      return SUBAGENT_RESOLUTION_MESSAGES[cause];\n    default: return SUBAGENT_RESOLUTION_MESSAGES.unknown;\n  }\n}\nfunction logSubagentResolutionFailure(phase, subagentType, signal, error, onResolutionFailure) {",
+          "count": 1
+        },
+        {
+          "before": "\t\ttype: describeSubagentError(error)",
+          "after": "\t\ttype: describeSubagentError(error),\n    cause: \"unknown\",\n    message: getSubagentResolutionFailureMessage(\"unknown\")",
+          "count": 1
+        },
+        {
+          "before": "\tconsole.warn(\"[SubagentExecutor] Subagent resolution failed\", detail);",
+          "after": "  if (onResolutionFailure != null && !signal.aborted) {\n    try {\n      const reported = onResolutionFailure(Object.freeze({ ...detail }), error);\n      const cause = reported === 'authentication_required' || reported === 'tools_unavailable'\n        ? reported : 'unknown';\n      return { ...detail, cause, message: getSubagentResolutionFailureMessage(cause) };\n    } catch {}\n  }\n\tconsole.warn(\"[SubagentExecutor] Subagent resolution failed\", detail);\n  return detail;",
+          "count": 1
+        },
+        {
+          "before": "export { logSubagentResolutionFailure };",
+          "after": "export { logSubagentResolutionFailure, getSubagentResolutionFailureMessage };",
+          "count": 1
+        }
+      ],
+      "afterSha256": "1e0e638cdb0260620cb9abdb3f4d1ceec9027310f253ad5e1bbba17986d7b5c4"
+    },
+    {
+      "path": "dist/esm/run.mjs",
+      "beforeSha256": "797f0c110d0d81e254d991398f43649b0660a5100773e1b19a76414384afb782",
+      "edits": [
+        {
+          "before": "\tsubagentContext;",
+          "after": "\tsubagentContext;\n\tonSubagentResolutionFailure;",
+          "count": 1
+        },
+        {
+          "before": "\t\tthis.subagentContext = config.subagentContext;",
+          "after": "\t\tthis.subagentContext = config.subagentContext;\n\t\tthis.onSubagentResolutionFailure = config.onSubagentResolutionFailure;",
+          "count": 1
+        },
+        {
+          "before": "subagentContext: this.subagentContext,",
+          "after": "subagentContext: this.subagentContext,\n        onSubagentResolutionFailure: this.onSubagentResolutionFailure,",
+          "count": 2
+        }
+      ],
+      "afterSha256": "8e2a02d689d3258c7e88f2d1f643da8124b05d9991795f81694781dd10209d4b"
+    },
+    {
+      "path": "dist/esm/graphs/Graph.mjs",
+      "beforeSha256": "701127bdbb9f902051233f3334f5c0fe90c35a7e640aa5326ff1603e510231ab",
+      "edits": [
+        {
+          "before": "\tsubagentContext;",
+          "after": "\tsubagentContext;\n\tonSubagentResolutionFailure;",
+          "count": 1
+        },
+        {
+          "before": "subagentContext, preemption",
+          "after": "subagentContext, onSubagentResolutionFailure, preemption",
+          "count": 1
+        },
+        {
+          "before": "\t\tthis.subagentContext = subagentContext;",
+          "after": "\t\tthis.subagentContext = subagentContext;\n\t\tthis.onSubagentResolutionFailure = onSubagentResolutionFailure;",
+          "count": 1
+        },
+        {
+          "before": "subagentContext: this.subagentContext,",
+          "after": "subagentContext: this.subagentContext,\n          onResolutionFailure: this.onSubagentResolutionFailure,",
+          "count": 1
+        }
+      ],
+      "afterSha256": "120f67088e190619e465763789e82a47bc7a1dc7792f5cb3467a379169f1535f"
+    },
+    {
+      "path": "dist/esm/tools/subagent/SubagentExecutor.mjs",
+      "beforeSha256": "c75ea2d1d5cf5377666829cc98706e8a46c7929e9826ba03031c1fd4f820c9de",
+      "edits": [
+        {
+          "before": "\tsubagentContext;",
+          "after": "\tsubagentContext;\n\tonResolutionFailure;",
+          "count": 1
+        },
+        {
+          "before": "\t\tthis.subagentContext = options.subagentContext;",
+          "after": "\t\tthis.subagentContext = options.subagentContext;\n\t\tthis.onResolutionFailure = options.onResolutionFailure;",
+          "count": 1
+        },
+        {
+          "before": "subagentContext: this.subagentContext,",
+          "after": "subagentContext: this.subagentContext,\n      onSubagentResolutionFailure: this.onResolutionFailure,",
+          "count": 2
+        },
+        {
+          "before": "logSubagentResolutionFailure(\"identity\", executableConfig.type, childSignal, error);\n\t\t\treturn createSubagentFailure(SUBAGENT_RESOLUTION_ERROR_MESSAGE);",
+          "after": "const failure = logSubagentResolutionFailure(\"identity\", executableConfig.type, childSignal, error, this.onResolutionFailure);\n\t\t\treturn createSubagentFailure(failure.message);",
+          "count": 1
+        },
+        {
+          "before": "logSubagentResolutionFailure(\"config\", executableConfig.type, childSignal, error);\n\t\t\treturn createSubagentFailure(SUBAGENT_RESOLUTION_ERROR_MESSAGE);",
+          "after": "const failure = logSubagentResolutionFailure(\"config\", executableConfig.type, childSignal, error, this.onResolutionFailure);\n\t\t\treturn createSubagentFailure(failure.message);",
+          "count": 1
+        },
+        {
+          "before": "\t\t\tusageSink: this.usageSink,\n\t\t\tsubagentContext: this.subagentContext,\n      onSubagentResolutionFailure: this.onResolutionFailure,",
+          "after": "\t\t\tusageSink: this.usageSink,\n\t\t\tsubagentContext: this.subagentContext,\n      onResolutionFailure: this.onResolutionFailure,",
+          "count": 1
+        }
+      ],
+      "afterSha256": "56d8d85824ed67f7dcb2826821da0f75d0e03eac36d912142a075564d49f248a"
+    },
+    {
+      "path": "dist/esm/main.mjs",
+      "beforeSha256": "60c3ac2ff6827d471081485abc4d38e5d4a869fc07d000a2291b55c3cf02b0af",
+      "edits": [
+        {
+          "before": "import { ACTIVITY_LABEL_RUN_NAME, ACTIVITY_PHASE_LABEL_RUN_NAME, ACTIVITY_PHASE_RUN_NAME, AGENT_MODEL_CALL_RUN_NAME, ANTHROPIC_TOOL_TOKEN_MULTIPLIER, COMPACTION_SEMANTIC_INDEX_LIMITS, DEFAULT_MAX_SEALS, DEFAULT_MAX_STOP_CONTINUATIONS, DEFAULT_PREEMPT_RESTART_GRACE_MS, DEFAULT_RECURSION_LIMIT, DEFAULT_TOOL_TOKEN_MULTIPLIER, MULTI_AGENT_GRAPH_RUN_NAME, PREEMPT_BOUNDARY_HOOK_TIMEOUT_MS, REASONING_LABEL_RUN_NAME, STANDARD_GRAPH_RUN_NAME, SUBAGENT_CONTEXT_VERSION } from \"./common/constants.mjs\";\n",
+          "after": "export { getSubagentResolutionFailureMessage } from \"./tools/subagent/diagnostics.mjs\";\nimport { ACTIVITY_LABEL_RUN_NAME, ACTIVITY_PHASE_LABEL_RUN_NAME, ACTIVITY_PHASE_RUN_NAME, AGENT_MODEL_CALL_RUN_NAME, ANTHROPIC_TOOL_TOKEN_MULTIPLIER, COMPACTION_SEMANTIC_INDEX_LIMITS, DEFAULT_MAX_SEALS, DEFAULT_MAX_STOP_CONTINUATIONS, DEFAULT_PREEMPT_RESTART_GRACE_MS, DEFAULT_RECURSION_LIMIT, DEFAULT_TOOL_TOKEN_MULTIPLIER, MULTI_AGENT_GRAPH_RUN_NAME, PREEMPT_BOUNDARY_HOOK_TIMEOUT_MS, REASONING_LABEL_RUN_NAME, STANDARD_GRAPH_RUN_NAME, SUBAGENT_CONTEXT_VERSION } from \"./common/constants.mjs\";\n",
+          "count": 1
+        }
+      ],
+      "afterSha256": "659227f0064bb0dfea9c664de5ce830a7627f7cc767f6fa00d9dbf645e4530a0"
+    },
+    {
+      "path": "dist/types/types/run.d.ts",
+      "beforeSha256": "e12d120f294cb6d07444663a0ff6ddb70f0d47ccffc4291ed08d30650cada3da",
+      "edits": [
+        {
+          "before": "import type { Callbacks } from '@langchain/core/callbacks/manager';\n",
+          "after": "import type { SubagentResolutionFailureHandler } from '@/tools/subagent/diagnostics';\nimport type { Callbacks } from '@langchain/core/callbacks/manager';\n",
+          "count": 1
+        },
+        {
+          "before": "    subagentContext?: g.SubagentContextAdapter;",
+          "after": "    subagentContext?: g.SubagentContextAdapter;\n    onSubagentResolutionFailure?: SubagentResolutionFailureHandler;",
+          "count": 1
+        }
+      ],
+      "afterSha256": "12ecdc813350feef6cbd90fce43846afcab587e4ab3192e53ce9e5d8af504ecf"
+    },
+    {
+      "path": "dist/types/types/graph.d.ts",
+      "beforeSha256": "cafe0ba1d10d17e02f9479726e8bb95c749af02e9cbbe657f8e788c53aea9d75",
+      "edits": [
+        {
+          "before": "import type { BaseMessage, AIMessageChunk, SystemMessage, UsageMetadata } from '@langchain/core/messages';\n",
+          "after": "import type { SubagentResolutionFailureHandler } from '@/tools/subagent/diagnostics';\nimport type { BaseMessage, AIMessageChunk, SystemMessage, UsageMetadata } from '@langchain/core/messages';\n",
+          "count": 1
+        },
+        {
+          "before": "    subagentContext?: SubagentContextAdapter;",
+          "after": "    subagentContext?: SubagentContextAdapter;\n    onSubagentResolutionFailure?: SubagentResolutionFailureHandler;",
+          "count": 1
+        }
+      ],
+      "afterSha256": "2b976c100ebc1e0246539ceef7b2075f455770b06efe7b10ef05540033583733"
+    },
+    {
+      "path": "dist/types/tools/subagent/SubagentExecutor.d.ts",
+      "beforeSha256": "866cc397a76ce3c89069b161ff435b2d663709455b970d2c7e7017161331853a",
+      "edits": [
+        {
+          "before": "import { BaseMessage } from '@langchain/core/messages';\n",
+          "after": "import type { SubagentResolutionFailureHandler } from '@/tools/subagent/diagnostics';\nimport { BaseMessage } from '@langchain/core/messages';\n",
+          "count": 1
+        },
+        {
+          "before": "    subagentContext?: SubagentContextAdapter;",
+          "after": "    subagentContext?: SubagentContextAdapter;\n    onResolutionFailure?: SubagentResolutionFailureHandler;",
+          "count": 1
+        }
+      ],
+      "afterSha256": "0148d0d0fcae1cc3d0939be47c1a863dfa4ce0eec3cfb7759164018b25e30feb"
+    },
+    {
+      "path": "dist/types/tools/subagent/diagnostics.d.ts",
+      "beforeSha256": "0279ebf91c505814ab40e268af3ef6bc836e112bcb9e31adccf1fef0b562dbb4",
+      "edits": [
+        {
+          "before": "    type: SubagentErrorLabel;",
+          "after": "    type: SubagentErrorLabel;\n    cause: SubagentResolutionCause;\n    message: string;",
+          "count": 1
+        },
+        {
+          "before": "export declare function logSubagentResolutionFailure(phase: SubagentResolutionPhase, subagentType: string, signal: AbortSignal, error: unknown): void;",
+          "after": "export type SubagentResolutionCause = 'authentication_required' | 'tools_unavailable' | 'unknown';\nexport type SubagentResolutionFailureHandler = (detail: Readonly<SubagentResolutionDiagnostic>, error: unknown) => SubagentResolutionCause | void;\nexport declare function getSubagentResolutionFailureMessage(cause: SubagentResolutionCause): string;\nexport declare function logSubagentResolutionFailure(phase: SubagentResolutionPhase, subagentType: string, signal: AbortSignal, error: unknown, onResolutionFailure?: SubagentResolutionFailureHandler): SubagentResolutionDiagnostic;",
+          "count": 1
+        }
+      ],
+      "afterSha256": "79478b6f0e7342fcb933183cc89b27490e87750269f7cf686878dc3d0a6d3b76"
+    },
+    {
+      "path": "src/tools/subagent/index.ts",
+      "beforeSha256": "a9f5dbf3e5e03c8edec3fdffd707ace4d17a82a23b6ee29f23d969e7a103aba4",
+      "edits": [
+        {
+          "before": " InMemorySubagentTaskStore } from './InMemorySubagentTaskStore';\nexport type { InMemorySubagentTaskStoreOptions } from './InMemorySubagentTaskStore';\n",
+          "after": " InMemorySubagentTaskStore } from './InMemorySubagentTaskStore';\nexport type { InMemorySubagentTaskStoreOptions } from './InMemorySubagentTaskStore';\n\nexport { getSubagentResolutionFailureMessage } from './diagnostics';\nexport type { SubagentResolutionFailureHandler, SubagentResolutionDiagnostic, SubagentResolutionCause } from './diagnostics';\n",
+          "count": 1
+        }
+      ],
+      "afterSha256": "374602e13b28f0c93022315163445b48514d03ff272b0fa68d4133366a0687a7"
+    },
+    {
+      "path": "dist/types/tools/subagent/index.d.ts",
+      "beforeSha256": "3dddfad78390472bfe373cda28f154d05c897dd8bdb663912f052661cc9e0740",
+      "edits": [
+        {
+          "before": " InMemorySubagentTaskStore } from './InMemorySubagentTaskStore';\nexport type { InMemorySubagentTaskStoreOptions } from './InMemorySubagentTaskStore';\n",
+          "after": " InMemorySubagentTaskStore } from './InMemorySubagentTaskStore';\nexport type { InMemorySubagentTaskStoreOptions } from './InMemorySubagentTaskStore';\n\nexport { getSubagentResolutionFailureMessage } from './diagnostics';\nexport type { SubagentResolutionFailureHandler, SubagentResolutionDiagnostic, SubagentResolutionCause } from './diagnostics';\n",
+          "count": 1
+        }
+      ],
+      "afterSha256": "acdd238c81f0197a081e6a04e6f3c5ae07f98ae96ad71de15dd764dd63be7b5c"
+    }
+  ]
+}
