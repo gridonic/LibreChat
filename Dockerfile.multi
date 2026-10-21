@@ -10,10 +10,11 @@ ARG BUILD_BRANCH=
 ARG BUILD_DATE=
 
 # Base for all builds
-FROM node:24.16.0-alpine AS base-min
+FROM node:24.22.1-alpine3.24@sha256:6a1c190e17215d844926b0677f4bf87273ff7d5e54db06d3b5b5863ab0b09a3d AS base-min
 ARG NPM_CI_TIMEOUT_SECONDS=1500
 ARG NPM_CI_ATTEMPTS=2
 RUN apk upgrade --no-cache
+RUN npm install --global --ignore-scripts npm@11.21.1 && npm cache clean --force
 RUN apk add --no-cache jemalloc
 # Set environment variable to use jemalloc
 ENV LD_PRELOAD=/usr/lib/libjemalloc.so.2
@@ -96,7 +97,8 @@ ARG NPM_CI_TIMEOUT_SECONDS=1500
 ARG NPM_CI_ATTEMPTS=2
 RUN mkdir -p /app/data && chmod 1777 /app/data
 # Add `uv` for extended MCP support
-COPY --from=ghcr.io/astral-sh/uv:0.6.13 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.13.4@sha256:9f130421e930bfbdc563c00740466603f8723158e90297d07957c2294640262b /uv /uvx /bin/
+ENV UV_SYSTEM_CERTS=true
 RUN uv --version
 WORKDIR /app
 # Install only production deps
