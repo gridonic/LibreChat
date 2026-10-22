@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { execFile } from 'node:child_process';
@@ -64,6 +65,10 @@ export async function auditPage({
   const directory = path.resolve(REPORTS_DIRECTORY);
   fs.rmSync(directory, { recursive: true, force: true });
   fs.mkdirSync(directory, { recursive: true });
+  // Keep session cookies out of process arguments and execFile error messages.
+  const headersDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'librechat-lighthouse-'));
+  const headersPath = path.join(headersDirectory, 'headers.json');
+  fs.writeFileSync(headersPath, JSON.stringify({ Cookie: cookie }), { mode: 0o600 });
 
   const cli = require.resolve('lighthouse/cli/index.js');
   const chromeFlags = `--headless=new ${process.env.LIGHTHOUSE_CHROME_FLAGS ?? ''}`.trim();
@@ -74,7 +79,7 @@ export async function auditPage({
     '--throttling-method=provided',
     '--only-categories=performance',
     `--chrome-flags=${chromeFlags}`,
-    `--extra-headers=${JSON.stringify({ Cookie: cookie })}`,
+    `--extra-headers=${headersPath}`,
     '--output=json',
     '--output=html',
   ];
@@ -112,6 +117,7 @@ export async function auditPage({
       }
     }
   } finally {
+    fs.rmSync(headersDirectory, { recursive: true, force: true });
     // Lighthouse embeds extraHeaders in reports; keep disposable session cookies out of artifacts.
     for (const file of fs.existsSync(directory) ? fs.readdirSync(directory) : []) {
       if (!/\.report\.(json|html)$/.test(file)) continue;
