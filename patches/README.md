@@ -1,7 +1,9 @@
 # Gridonic MCP recovery backport
 
-The image branch starts at the deployed v0.8.8 source, `7b24072904c180288d1b5343290f4a86cb5fa8ed`.
-It retains LC-005 and LC-006 and adapts the reviewed changes from LibreChat PRs
+The image branch starts at the deployed v0.8.8 security source,
+`e032f5b5ae283dd66a1faeb8a33d700146c13dc6` (the same tree as image source
+`ed295acc7f8730b70e7899a11090d67975d610ac`). It retains the security updates,
+LC-005 and LC-006 and adapts the reviewed changes from LibreChat PRs
 17300 and 17302 and agents PR 632 to that release.
 
 The frontend still owns streaming state in `useStepHandler`, so the OAuth suffix,
