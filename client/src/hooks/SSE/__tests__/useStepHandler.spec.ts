@@ -26,7 +26,7 @@ import {
   subagentProgressKey,
 } from '~/components/Chat/Subagents/state';
 import { ptcTraceByToolCallId, ptcTraceKey, PTC_TRACE_MAX_ENTRIES } from '~/store/ptc';
-import { resolveAskUserQuestionPart } from '~/utils/approval';
+import { applyPendingAction, resolveAskUserQuestionPart } from '~/utils/approval';
 import { sandboxStartingByToolCallId } from '~/store/sandbox';
 import useStepHandler from '~/hooks/SSE/useStepHandler';
 import { IsolatedAtomStore } from 'test/harness';
@@ -2513,7 +2513,7 @@ describe('useStepHandler', () => {
       consoleSpy.mockRestore();
     });
 
-    it('should mark completed OAuth prompts as finished', () => {
+    it('should remove completed OAuth prompts', () => {
       const responseMessage = createResponseMessage();
       mockGetMessages.mockReturnValue([responseMessage]);
 
@@ -2563,8 +2563,169 @@ describe('useStepHandler', () => {
 
       const lastCall = mockSetMessages.mock.calls[mockSetMessages.mock.calls.length - 1][0];
       const responseMsg = lastCall.find((m: TMessage) => !m.isCreatedByUser);
-      expect(responseMsg?.content?.[0]?.tool_call?.progress).toBe(1);
+      expect(responseMsg?.content).toEqual([]);
     });
+  });
+
+  describe('backported MCP reconnect lifecycle', () => {
+    function setup() {
+      let messages = [createUserMessage(), createResponseMessage()];
+      mockGetMessages.mockImplementation(() => messages);
+      mockSetMessages.mockImplementation((next) => {
+        messages = next;
+      });
+      const { result } = renderHook(() => useStepHandler(createHookParams()));
+      const submission = createSubmission({
+        initialResponse: createResponseMessage({ messageId: 'prelim' }),
+      });
+      const send = (event: Parameters<typeof result.current.stepHandler>[0]) => {
+        act(() => result.current.stepHandler(event, submission));
+      };
+      const text = (index: number, value: string) => {
+        send({
+          event: StepEvents.ON_RUN_STEP,
+          data: createRunStep({ id: `text-${index}`, index }),
+        });
+        send({
+          event: StepEvents.ON_MESSAGE_DELTA,
+          data: createMessageDelta(`text-${index}`, value),
+        });
+      };
+      const open = (id = 'flow-a', server = 'a') => {
+        const name = `oauth${Constants.mcp_delimiter}${server}`;
+        send({
+          event: StepEvents.ON_RUN_STEP,
+          data: createToolCallRunStep({
+            id: `oauth-${server}`,
+            runId: USE_PRELIM_RESPONSE_MESSAGE_ID,
+            index: 0,
+            stepDetails: { type: StepTypes.TOOL_CALLS, tool_calls: [{ id, name, args: '' }] },
+          }),
+        });
+        send({
+          event: StepEvents.ON_RUN_STEP_DELTA,
+          data: {
+            id: `oauth-${server}`,
+            delta: {
+              type: StepTypes.TOOL_CALLS,
+              auth: `https://example.com/authorize/${id}`,
+              expires_at: 2000000000,
+              tool_calls: [{ id, name, args: '' }],
+            },
+          },
+        });
+      };
+      const close = (id = 'flow-a', server = 'a') =>
+        send({
+          event: StepEvents.ON_RUN_STEP_COMPLETED,
+          data: {
+            result: {
+              id: `oauth-${server}`,
+              index: 0,
+              tool_call: {
+                id,
+                name: `oauth${Constants.mcp_delimiter}${server}`,
+                args: '',
+                output: 'done',
+              },
+            },
+          },
+        });
+      return {
+        result,
+        send,
+        text,
+        open,
+        close,
+        response: () => messages.find((message) => message.messageId === 'response-msg-1')!,
+        setResponse: (message: TMessage) => {
+          messages = messages.map((old) => (old.messageId === message.messageId ? message : old));
+          result.current.syncStepMessage(message);
+        },
+        messages: () => messages,
+      };
+    }
+
+    it('keeps parent text and multiple actionable prompts through later model deltas', () => {
+      const h = setup();
+      h.text(0, 'Checking specialist access.');
+      h.open();
+      h.open('flow-b', 'b');
+      h.text(1, 'Still working.');
+      expect(h.response().content?.map((part) => part?.type)).toEqual([
+        'text',
+        'text',
+        'tool_call',
+        'tool_call',
+      ]);
+      expect(h.response().content?.[0]).toMatchObject({ text: 'Checking specialist access.' });
+      expect(h.response().content?.[2]).toMatchObject({
+        tool_call: { id: 'flow-a', auth: 'https://example.com/authorize/flow-a' },
+      });
+      expect(h.messages().some((message) => message.messageId === 'prelim')).toBe(false);
+      h.close();
+      expect(h.response().content?.[2]).toMatchObject({ tool_call: { id: 'flow-b' } });
+    });
+
+    it('replaces a flow by step identity and ignores its stale completion', () => {
+      const h = setup();
+      h.text(0, 'Checking.');
+      h.open();
+      h.open('flow-new');
+      h.close();
+      expect(h.response().content).toHaveLength(2);
+      expect(h.response().content?.[1]).toMatchObject({
+        tool_call: { id: 'flow-new', auth: 'https://example.com/authorize/flow-new' },
+      });
+      h.close('flow-new');
+      expect(h.response().content).toEqual([{ type: ContentTypes.TEXT, text: 'Checking.' }]);
+    });
+
+    it('removes a failed OAuth prompt without closing the parent model slot', () => {
+      const h = setup();
+      h.text(0, 'Checking.');
+      h.open();
+      h.send({
+        event: StepEvents.ON_RUN_STEP_CLOSED,
+        data: {
+          id: 'oauth-a',
+          index: 0,
+          type: StepTypes.TOOL_CALLS,
+          status: 'failed',
+          created_at: 1000,
+          closed_at: 1234,
+        },
+      });
+      expect(h.response().content).toEqual([{ type: ContentTypes.TEXT, text: 'Checking.' }]);
+    });
+
+    it.each(['oauth-first', 'question-first'])(
+      'preserves the model index through a question pause (%s)',
+      (order) => {
+        const h = setup();
+        h.text(0, 'Choose.');
+        const pause = () =>
+          h.setResponse(
+            applyPendingAction(h.response(), {
+              actionId: 'backport-question',
+              payload: { type: 'ask_user_question', question: { question: 'Which?' } },
+            } as Agents.PendingAction),
+          );
+        if (order === 'oauth-first') {
+          h.open();
+          pause();
+        } else {
+          pause();
+          h.open();
+        }
+        h.setResponse(resolveAskUserQuestionPart(h.response(), 'backport-question', 'yes'));
+        h.text(2, 'Resumed.');
+        expect(h.response().content?.[2]).toMatchObject({ text: 'Resumed.' });
+        expect(h.response().content?.[3]).toMatchObject({ tool_call: { id: 'flow-a' } });
+        h.close();
+        expect(h.response().content?.[2]).toMatchObject({ text: 'Resumed.' });
+      },
+    );
   });
 
   describe('clearStepMaps', () => {

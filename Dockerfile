@@ -27,6 +27,8 @@ WORKDIR /app
 USER node
 
 COPY --chown=node:node package.json package-lock.json ./
+COPY --chown=node:node scripts/apply-agents-patch.cjs ./scripts/apply-agents-patch.cjs
+COPY --chown=node:node patches/agents-4.0.1-mcp-recovery.json ./patches/agents-4.0.1-mcp-recovery.json
 COPY --chown=node:node api/package.json ./api/package.json
 COPY --chown=node:node client/package.json ./client/package.json
 COPY --chown=node:node packages/data-provider/package.json ./packages/data-provider/package.json
