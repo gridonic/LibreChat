@@ -178,6 +178,10 @@ export function useSetMessageFileExcluded() {
   return useMutation(dataService.setMessageFileExcluded, {
     mutationKey: [MutationKeys.setMessageFileExcluded],
     onSuccess: (result, input) => {
+      queryClient.setQueryData<Record<string, t.AttachmentReplayDecision[]>>(
+        [QueryKeys.attachmentReplay, input.conversationId],
+        (policies) => ({ ...policies, [result.messageId]: result.attachmentReplay }),
+      );
       queryClient.setQueryData<t.TMessage[]>(
         [QueryKeys.messages, input.conversationId],
         (messages) =>
@@ -185,15 +189,7 @@ export function useSetMessageFileExcluded() {
             message.messageId === result.messageId
               ? {
                   ...message,
-                  files: message.files?.map((file) =>
-                    file.file_id === result.fileId
-                      ? {
-                          ...file,
-                          excludedFromContext: result.excluded,
-                          replayAfterMessageId: result.replayAfterMessageId,
-                        }
-                      : file,
-                  ),
+                  attachmentReplay: result.attachmentReplay,
                 }
               : message,
           ),

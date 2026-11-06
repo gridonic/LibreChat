@@ -3820,6 +3820,77 @@ describe('initializeAgent — code-generated file thread filter (regression)', (
     },
   );
 
+  it.each([true, false])(
+    'keeps originals for display but applies stored replay policy to reused request inputs (tools=%s)',
+    async (withTools) => {
+      const { agent, req, res, loadTools, db } = setupExecuteCodeAgent();
+      if (!withTools) agent.tools = [];
+      mockGetThreadData.mockImplementation(realUtils.getThreadData);
+      req.body = { overrideParentMessageId: 'upload', responseMessageId: 'response_' };
+      const files = ['omit', 'keep'].map(
+        (file_id) =>
+          ({
+            file_id,
+            user: 'user-1',
+            source: FileSources.text,
+            text: `contents-${file_id}`,
+            filename: `${file_id}.csv`,
+            type: 'text/csv',
+            bytes: 10,
+          }) as unknown as IMongoFile,
+      );
+      const getMessages = jest.fn().mockResolvedValue([
+        {
+          messageId: 'upload',
+          parentMessageId: Constants.NO_PARENT,
+          isCreatedByUser: true,
+          files,
+          attachmentReplay: [{ fileId: 'omit', excluded: true }],
+        },
+        { messageId: 'response', parentMessageId: 'upload', isCreatedByUser: false },
+      ]);
+      (db.getFiles as jest.Mock).mockResolvedValue(files);
+      const { filterFilesByEndpointRuntimeConfig } = jest.requireMock('~/files') as {
+        filterFilesByEndpointRuntimeConfig: jest.Mock;
+      };
+      filterFilesByEndpointRuntimeConfig.mockImplementation(
+        (_config: unknown, { files }: { files: IMongoFile[] }) => files,
+      );
+      const { primeResources } = jest.requireMock('../resources') as { primeResources: jest.Mock };
+      primeResources.mockImplementationOnce(
+        jest.requireActual<typeof import('../resources')>('../resources').primeResources,
+      );
+      const result = await initializeAgent(
+        {
+          req,
+          res,
+          agent,
+          loadTools,
+          requestFiles: files,
+          conversationId: 'conv-1',
+          parentMessageId: String(Constants.NO_PARENT),
+          requestBody: { conversationId: 'conv-1' },
+          endpointOption: { endpoint: EModelEndpoint.agents },
+          allowedProviders: new Set([Providers.OPENAI]),
+          isInitialAgent: true,
+          codeEnvAvailable: withTools,
+        },
+        { ...db, getMessages },
+      );
+      expect(result.messageFiles?.map((file) => file.file_id)).toEqual(['omit', 'keep']);
+      expect(result.requestAttachments.map((file) => file.file_id)).toEqual(['keep']);
+      expect(db.updateFilesUsage).toHaveBeenCalledWith(
+        [expect.objectContaining({ file_id: 'keep' })],
+        undefined,
+        expect.anything(),
+      );
+      expect(getMessages).toHaveBeenCalledWith(
+        { conversationId: 'conv-1', user: 'user-1' },
+        expect.stringContaining('attachmentReplay'),
+      );
+    },
+  );
+
   it('selects messages.attachments alongside messages.files (regression)', async () => {
     /* Code-execution outputs land on `messages.attachments` via
      * `processCodeOutput`; user uploads land on `messages.files`.

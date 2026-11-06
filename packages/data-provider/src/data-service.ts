@@ -1707,6 +1707,7 @@ export function setMessageFileExcluded(payload: {
   fileId: string;
   excluded: boolean;
   replayAfterMessageId?: string;
+  attachmentReplay: NonNullable<t.TMessage['attachmentReplay']>;
 }> {
   return request.patch(
     endpoints.messageFileExclusion(payload.conversationId, payload.messageId, payload.fileId),

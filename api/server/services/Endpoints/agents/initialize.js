@@ -1848,6 +1848,7 @@ const initializeClientWithProvider = async ({
     iconURL: endpointOption.iconURL,
     chatProjectId: endpointOption.chatProjectId,
     attachments: primaryConfig.requestAttachments ?? primaryConfig.attachments,
+    messageFiles: primaryConfig.messageFiles,
     agentContextAttachmentsByAgentId,
     endpointType: endpointOption.endpointType,
     resendFiles: primaryConfig.resendFiles ?? true,

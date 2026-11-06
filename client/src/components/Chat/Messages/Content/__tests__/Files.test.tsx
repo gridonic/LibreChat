@@ -121,7 +121,9 @@ it('does not claim to remove context already held by a provider-managed Assistan
 });
 
 it('shows the effective skipped state after a failed retry and offers Include directly', () => {
-  mockReplay = { file: { excluded: true, rejectionMessageId: 'latest-rejection' } };
+  mockReplay = {
+    file: { excluded: true, reason: 'rejected', rejectionMessageId: 'latest-rejection' },
+  };
   render(
     <Files
       message={{
@@ -146,4 +148,11 @@ it('shows the effective skipped state after a failed retry and offers Include di
     replayAfterMessageId: 'latest-rejection',
   });
   expect(screen.getByText('file action')).toBeInTheDocument();
+});
+
+it('labels a manual exclusion correctly after canonical file hydration', () => {
+  mockReplay = { file: { excluded: true, reason: 'manual' } };
+  render(<Files message={message} />);
+  expect(screen.getByText('com_ui_attachment_excluded')).toBeInTheDocument();
+  expect(screen.queryByText('com_ui_attachment_rejected')).not.toBeInTheDocument();
 });

@@ -54,7 +54,7 @@ const Files = ({ message }: { message?: TMessage }) => {
       return null;
     const state = replay?.[file.file_id];
     const excluded = state?.excluded ?? file.excludedFromContext === true;
-    const automaticallyExcluded = excluded && file.excludedFromContext !== true;
+    const automaticallyExcluded = excluded && state?.reason === 'rejected';
     return (
       <div className="flex max-w-56 flex-col items-start gap-1">
         {excluded && (

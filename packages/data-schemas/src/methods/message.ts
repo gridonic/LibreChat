@@ -659,6 +659,7 @@ export interface MessageMethods {
     fileId: string;
     excluded: boolean;
     replayAfterMessageId?: string;
+    attachmentReplay: NonNullable<IMessage['attachmentReplay']>;
   } | null>;
   saveMessage(
     ctx: {
@@ -958,6 +959,8 @@ export function createMessageMethods(mongoose: typeof import('mongoose')): Messa
         user: userId,
         messageId: params.newMessageId || params.messageId,
       };
+      // Only setMessageFileExcluded owns replay decisions; stale turn saves cannot replace them.
+      delete update.attachmentReplay;
       delete update.isTemporary;
       delete update.expiredAt;
       let retentionOnInsert: { expiredAt: Date; isTemporary: false } | undefined;
@@ -1141,6 +1144,7 @@ export function createMessageMethods(mongoose: typeof import('mongoose')): Messa
       const Message = mongoose.models.Message as Model<IMessage>;
       const bulkOps = messages.map((message) => {
         const normalizedMessage = { ...message };
+        delete normalizedMessage.attachmentReplay;
         const provenance = capNormalizedProvenance(
           normalizeUserSubmittedPaths(message.userSubmittedPaths),
           normalizeUserSubmittedMessageFieldPaths(message.userSubmittedMessageFieldPaths),
@@ -1201,6 +1205,7 @@ export function createMessageMethods(mongoose: typeof import('mongoose')): Messa
         normalizeUserSubmittedMessageFieldPaths(rest.userSubmittedMessageFieldPaths),
       );
       const {
+        attachmentReplay: _attachmentReplay,
         userSubmittedPaths: _userSubmittedPaths,
         userSubmittedMessageFieldPaths: _userSubmittedMessageFieldPaths,
         ...safeRest
@@ -2079,6 +2084,7 @@ export function createMessageMethods(mongoose: typeof import('mongoose')): Messa
     try {
       const Message = mongoose.models.Message as Model<IMessage>;
       const { messageId, ...update } = message;
+      delete update.attachmentReplay;
       const submittedPaths = normalizeUserSubmittedPaths(update.userSubmittedPaths);
       const submittedMessageFields = normalizeUserSubmittedMessageFieldPaths(
         update.userSubmittedMessageFieldPaths,
@@ -3781,18 +3787,35 @@ export function createMessageMethods(mongoose: typeof import('mongoose')): Messa
         'files.file_id': input.fileId,
         endpoint: { $nin: [EModelEndpoint.assistants, EModelEndpoint.azureAssistants] },
       },
-      {
-        $set: {
-          'files.$.excludedFromContext': input.excluded,
-          ...(!input.excluded && input.replayAfterMessageId
-            ? { 'files.$.replayAfterMessageId': input.replayAfterMessageId }
-            : {}),
+      [
+        {
+          $set: {
+            attachmentReplay: {
+              $concatArrays: [
+                {
+                  $filter: {
+                    input: { $ifNull: ['$attachmentReplay', []] },
+                    as: 'decision',
+                    cond: { $ne: ['$$decision.fileId', { $literal: input.fileId }] },
+                  },
+                },
+                {
+                  $literal: [
+                    {
+                      fileId: input.fileId,
+                      excluded: input.excluded,
+                      ...(!input.excluded && input.replayAfterMessageId
+                        ? { replayAfterMessageId: input.replayAfterMessageId }
+                        : {}),
+                    },
+                  ],
+                },
+              ],
+            },
+          },
         },
-        ...(input.excluded || !input.replayAfterMessageId
-          ? { $unset: { 'files.$.replayAfterMessageId': '' } }
-          : {}),
-      },
-      { new: true, projection: { messageId: 1 } },
+      ],
+      { new: true, projection: { messageId: 1, attachmentReplay: 1 } },
     ).lean();
     return message == null
       ? null
@@ -3800,6 +3823,7 @@ export function createMessageMethods(mongoose: typeof import('mongoose')): Messa
           messageId: message.messageId,
           fileId: input.fileId,
           excluded: input.excluded,
+          attachmentReplay: message.attachmentReplay ?? [],
           ...(!input.excluded && input.replayAfterMessageId
             ? { replayAfterMessageId: input.replayAfterMessageId }
             : {}),

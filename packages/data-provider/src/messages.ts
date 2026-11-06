@@ -93,16 +93,7 @@ export function buildTree({
     };
 
     if (message.files && fileMap) {
-      extendedMessage.files = message.files.map((file) => {
-        const hydrated = fileMap[file.file_id ?? ''] ?? file;
-        return file.excludedFromContext == null
-          ? hydrated
-          : {
-              ...hydrated,
-              excludedFromContext: file.excludedFromContext,
-              replayAfterMessageId: file.replayAfterMessageId,
-            };
-      });
+      extendedMessage.files = message.files.map((file) => fileMap[file.file_id ?? ''] ?? file);
     }
 
     messageMap[message.messageId] = extendedMessage;

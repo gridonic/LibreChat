@@ -1,7 +1,11 @@
+import { ContentTypes } from '../src/types/runs';
 import {
   prepareAttachmentReplayHistory,
   getAttachmentReplayStates,
   selectAttachmentReplayBranch,
+  getReusedAttachmentReplayStates,
+  getAttachmentReplayRequest,
+  getBranchAttachmentReplayStates,
 } from '../src/attachmentReplay';
 import type { TMessage } from '../src/schemas';
 
@@ -106,6 +110,7 @@ describe('attachment retry scope', () => {
     expect(getAttachmentReplayStates(failedAgain).upload.large).toEqual({
       excluded: true,
       rejectionMessageId: 'rejection-2',
+      reason: 'rejected',
     });
     expect(stored[0].files).toHaveLength(1);
   });
@@ -134,4 +139,96 @@ describe('attachment retry scope', () => {
       selectAttachmentReplayBranch([{ messageId: 'cycle', parentMessageId: 'cycle' }], 'cycle'),
     ).toHaveLength(1);
   });
+});
+
+describe('one replay policy for every reference surface', () => {
+  it('recovers a rejected steer-only file and strips cached media without losing stored references', () => {
+    const stored: Partial<TMessage>[] = [
+      {
+        messageId: 'steer',
+        isCreatedByUser: false,
+        content: [
+          {
+            type: ContentTypes.STEER,
+            steer: 'read',
+            files: [{ file_id: 'steer-file' }],
+            media: [{ type: 'text', text: 'cached file text' }],
+          },
+        ],
+      },
+      { ...user('next', []), parentMessageId: 'steer' },
+      {
+        ...failure(
+          'next',
+          JSON.stringify({
+            code: 'AGENT_ATTACHMENT_LIMIT_EXCEEDED',
+            rejectedFileIds: ['steer-file'],
+          }),
+        ),
+        messageId: 'failure',
+      },
+    ];
+    const projected = prepareAttachmentReplayHistory(stored);
+    expect(projected[0].content?.[0]).toMatchObject({ files: [], media: undefined });
+    expect(stored[0].content?.[0]).toMatchObject({ files: [{ file_id: 'steer-file' }] });
+  });
+  it('uses the same durable decision for regenerate/continue, include, and another failed retry', () => {
+    const request = getAttachmentReplayRequest({
+      overrideParentMessageId: 'upload',
+      responseMessageId: 'failure_',
+    })!;
+    const uploaded: Partial<TMessage> = {
+      ...user('upload'),
+      attachmentReplay: [{ fileId: 'large', excluded: true }],
+    };
+    const stored = [uploaded, failure('upload')];
+    expect(getReusedAttachmentReplayStates(stored, request).large).toMatchObject({
+      excluded: true,
+      reason: 'manual',
+    });
+    uploaded.attachmentReplay = [
+      { fileId: 'large', excluded: false, replayAfterMessageId: 'failure' },
+    ];
+    expect(getReusedAttachmentReplayStates(stored, request).large.excluded).toBe(false);
+    const retry = { ...user('retry', []), parentMessageId: 'failure' };
+    const latest = {
+      ...failure(
+        'retry',
+        JSON.stringify({ code: 'AGENT_ATTACHMENT_LIMIT_EXCEEDED', rejectedFileIds: ['large'] }),
+      ),
+      messageId: 'new-failure',
+    };
+    expect(
+      getReusedAttachmentReplayStates([...stored, retry, latest], {
+        ...request,
+        headMessageId: 'new-failure',
+      }).large,
+    ).toMatchObject({ excluded: true, reason: 'rejected' });
+    expect(uploaded.files).toHaveLength(1);
+  });
+});
+
+it('recovers legacy aggregate rejection on a text-only turn', () => {
+  const stored = [
+    user('upload'),
+    { ...user('next', []), parentMessageId: 'upload' },
+    failure('next'),
+  ];
+  expect(prepareAttachmentReplayHistory(stored)[0].files).toEqual([]);
+});
+
+it('shares the branch projection between rows and invalidates it on policy or branch changes', () => {
+  const stored = [user('upload'), { ...failure('upload'), messageId: 'failure' }];
+  const policies = {
+    upload: [{ fileId: 'large', excluded: false, replayAfterMessageId: 'failure' }],
+  };
+  const first = getBranchAttachmentReplayStates(stored, 'failure', policies);
+  expect(first.upload.large.excluded).toBe(false);
+  expect(getBranchAttachmentReplayStates(stored, 'failure', policies)).toBe(first);
+  expect(
+    getBranchAttachmentReplayStates(stored, 'failure', {
+      upload: [{ fileId: 'large', excluded: true }],
+    }).upload.large,
+  ).toMatchObject({ excluded: true, reason: 'manual' });
+  expect(getBranchAttachmentReplayStates(stored, 'upload').upload.large.excluded).toBe(false);
 });

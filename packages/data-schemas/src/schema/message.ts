@@ -135,6 +135,17 @@ const messageSchema: Schema<IMessage> = new Schema(
       select: false,
       default: false,
     },
+    attachmentReplay: {
+      type: [
+        {
+          _id: false,
+          fileId: { type: String, required: true },
+          excluded: { type: Boolean, required: true },
+          replayAfterMessageId: String,
+        },
+      ],
+      default: undefined,
+    },
     files: { type: [{ type: mongoose.Schema.Types.Mixed }], default: undefined },
     content: {
       type: [{ type: mongoose.Schema.Types.Mixed }],

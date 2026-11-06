@@ -1,4 +1,5 @@
 import type {
+  AttachmentReplayDecision,
   TFeedbackRating,
   TFeedbackTag,
   UserSubmittedMessageFieldPath,
@@ -80,6 +81,7 @@ export interface IMessage extends Document {
   /** The run whose trace this response reports, when that run's id is not the message's own (a failed turn's error row). */
   langfuseRunId?: string;
   _meiliIndex?: boolean;
+  attachmentReplay?: AttachmentReplayDecision[];
   files?: unknown[];
   plugin?: {
     latest?: string;

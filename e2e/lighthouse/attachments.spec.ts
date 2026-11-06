@@ -66,7 +66,10 @@ for (const theme of ['light', 'dark']) {
     ).not.toBeVisible();
     await withMongo(async (db) => {
       const row = await db.collection('messages').findOne({ messageId });
-      expect(row?.files[0].replayAfterMessageId).toBe(`${conversationId}-answer`);
+      expect(
+        row?.attachmentReplay?.find((decision: { fileId: string }) => decision.fileId === fileId)
+          ?.replayAfterMessageId,
+      ).toBe(`${conversationId}-answer`);
     });
     await page
       .getByRole('button', { name: 'Exclude from future messages: keyword-sample.csv' })
@@ -75,6 +78,10 @@ for (const theme of ['light', 'dark']) {
       name: 'Include in future messages: keyword-sample.csv',
     });
     await expect(restore).toBeVisible();
+    await expect(page.getByText('Excluded from future messages.', { exact: false })).toBeVisible();
+    await expect(
+      page.getByText('Skipped after a size rejection.', { exact: false }),
+    ).not.toBeVisible();
     await page.reload();
     await expect(restore).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath(`attachment-controls-${theme}.png`) });
@@ -87,7 +94,10 @@ for (const theme of ['light', 'dark']) {
     ).toBeVisible();
     await withMongo(async (db) => {
       const row = await db.collection('messages').findOne({ messageId });
-      expect(row?.files[0].excludedFromContext).toBe(false);
+      expect(
+        row?.attachmentReplay?.find((decision: { fileId: string }) => decision.fileId === fileId)
+          ?.excluded,
+      ).toBe(false);
       expect(await db.collection('files').findOne({ file_id: fileId })).not.toBeNull();
     });
   });

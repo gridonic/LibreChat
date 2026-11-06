@@ -1,4 +1,5 @@
 export enum QueryKeys {
+  attachmentReplay = 'attachmentReplay',
   messages = 'messages',
   sharedMessages = 'sharedMessages',
   sharedStartupConfig = 'sharedStartupConfig',

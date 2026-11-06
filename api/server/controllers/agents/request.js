@@ -2941,7 +2941,11 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
         }
 
         if (req.body.files && Array.isArray(client.options.attachments)) {
-          const files = buildMessageFiles(req.body.files, client.options.attachments);
+          const files = buildMessageFiles(
+            req.body.files,
+            client.options.attachments,
+            client.options.messageFiles,
+          );
           if (files.length > 0) {
             userMessage.files = files;
           }
