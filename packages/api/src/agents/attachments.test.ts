@@ -12,6 +12,7 @@ import {
   AgentAttachmentPolicyError,
   assertAgentAttachmentLimits,
   assertAgentUploadTextLimits,
+  serializeAttachmentRejection,
   createAgentMemoryCallback,
   collectAgentAttachmentStats,
   collectFileIds,
@@ -809,5 +810,29 @@ describe('agent upload extracted-text admission', () => {
         }),
       ).not.toThrow();
     }
+  });
+});
+
+describe('rejected attachment snapshots', () => {
+  it('carries the attempted file ids through persisted and streaming errors', () => {
+    let caught: unknown;
+    try {
+      assertAgentAttachmentLimits({
+        attachments: [{ file_id: 'prior-upload', text: '123456', source: FileSources.text }],
+        fileConfig: { fileContextCharLimit: 5 },
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toMatchObject({ rejectedFileIds: ['prior-upload'] });
+    expect(JSON.parse(serializeAttachmentRejection(caught))).toMatchObject({
+      code: 'AGENT_ATTACHMENT_LIMIT_EXCEEDED',
+      rejectedFileIds: ['prior-upload'],
+    });
+  });
+  it('does not expose unexpected exceptions', () => {
+    expect(serializeAttachmentRejection(new Error('private payload'))).not.toContain(
+      'private payload',
+    );
   });
 });

@@ -162,6 +162,8 @@ export type TFile = {
   temp_file_id?: string;
   /** Per-message reference only; does not delete or change the original uploaded file. */
   excludedFromContext?: boolean;
+  /** The rejection acknowledged by this explicit retry. A later rejection supersedes it. */
+  replayAfterMessageId?: string;
   bytes: number;
   embedded: boolean;
   filename: string;

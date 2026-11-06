@@ -3062,5 +3062,6 @@
   "com_ui_attachment_exclude": "Exclude from future messages",
   "com_ui_attachment_include": "Include in future messages",
   "com_ui_attachment_excluded": "Excluded from future messages. The original file is still available.",
+  "com_ui_attachment_rejected": "Skipped after a size rejection. Upload a smaller file or choose which files to include.",
   "com_ui_attachment_update_failed": "Could not change the attachment. Please try again."
 }

@@ -27,7 +27,10 @@ for (const theme of ['light', 'dark']) {
       {
         messageId: `${conversationId}-answer`,
         parentMessageId: messageId,
-        text: 'You can exclude this attachment from future messages while keeping the original available.',
+        text: JSON.stringify({
+          code: 'AGENT_ATTACHMENT_LIMIT_EXCEEDED',
+          rejectedFileIds: [fileId],
+        }),
         isCreatedByUser: false,
         sender: 'Assistant',
       },
@@ -47,10 +50,24 @@ for (const theme of ['light', 'dark']) {
       };
       await db.collection('files').insertOne(file);
       await db.collection('messages').updateOne({ messageId }, { $set: { files: [file] } });
+      await db
+        .collection('messages')
+        .updateOne({ messageId: `${conversationId}-answer` }, { $set: { error: true } });
     });
     await page.addInitScript((value) => localStorage.setItem('color-theme', value), theme);
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(`/c/${conversationId}`);
+    await expect(page.getByText('Skipped after a size rejection.', { exact: false })).toBeVisible();
+    await page
+      .getByRole('button', { name: 'Include in future messages: keyword-sample.csv' })
+      .click();
+    await expect(
+      page.getByText('Skipped after a size rejection.', { exact: false }),
+    ).not.toBeVisible();
+    await withMongo(async (db) => {
+      const row = await db.collection('messages').findOne({ messageId });
+      expect(row?.files[0].replayAfterMessageId).toBe(`${conversationId}-answer`);
+    });
     await page
       .getByRole('button', { name: 'Exclude from future messages: keyword-sample.csv' })
       .click();

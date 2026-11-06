@@ -1701,9 +1701,15 @@ export function setMessageFileExcluded(payload: {
   messageId: string;
   fileId: string;
   excluded: boolean;
-}): Promise<{ messageId: string; fileId: string; excluded: boolean }> {
+  replayAfterMessageId?: string;
+}): Promise<{
+  messageId: string;
+  fileId: string;
+  excluded: boolean;
+  replayAfterMessageId?: string;
+}> {
   return request.patch(
     endpoints.messageFileExclusion(payload.conversationId, payload.messageId, payload.fileId),
-    { excluded: payload.excluded },
+    { excluded: payload.excluded, replayAfterMessageId: payload.replayAfterMessageId },
   );
 }

@@ -653,7 +653,13 @@ export interface MessageMethods {
     messageId: string;
     fileId: string;
     excluded: boolean;
-  }): Promise<{ messageId: string; fileId: string; excluded: boolean } | null>;
+    replayAfterMessageId?: string;
+  }): Promise<{
+    messageId: string;
+    fileId: string;
+    excluded: boolean;
+    replayAfterMessageId?: string;
+  } | null>;
   saveMessage(
     ctx: {
       userId: string;
@@ -3775,7 +3781,17 @@ export function createMessageMethods(mongoose: typeof import('mongoose')): Messa
         'files.file_id': input.fileId,
         endpoint: { $nin: [EModelEndpoint.assistants, EModelEndpoint.azureAssistants] },
       },
-      { $set: { 'files.$.excludedFromContext': input.excluded } },
+      {
+        $set: {
+          'files.$.excludedFromContext': input.excluded,
+          ...(!input.excluded && input.replayAfterMessageId
+            ? { 'files.$.replayAfterMessageId': input.replayAfterMessageId }
+            : {}),
+        },
+        ...(input.excluded || !input.replayAfterMessageId
+          ? { $unset: { 'files.$.replayAfterMessageId': '' } }
+          : {}),
+      },
       { new: true, projection: { messageId: 1 } },
     ).lean();
     return message == null
@@ -3784,6 +3800,9 @@ export function createMessageMethods(mongoose: typeof import('mongoose')): Messa
           messageId: message.messageId,
           fileId: input.fileId,
           excluded: input.excluded,
+          ...(!input.excluded && input.replayAfterMessageId
+            ? { replayAfterMessageId: input.replayAfterMessageId }
+            : {}),
         };
   }
 

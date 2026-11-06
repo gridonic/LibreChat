@@ -97,7 +97,11 @@ export function buildTree({
         const hydrated = fileMap[file.file_id ?? ''] ?? file;
         return file.excludedFromContext == null
           ? hydrated
-          : { ...hydrated, excludedFromContext: file.excludedFromContext };
+          : {
+              ...hydrated,
+              excludedFromContext: file.excludedFromContext,
+              replayAfterMessageId: file.replayAfterMessageId,
+            };
       });
     }
 

@@ -229,12 +229,18 @@ describe('sse', () => {
       const res = createMockRes();
       expect(sendUploadPolicyError(res, null, error)).toBe(true);
       expect(res.status).toHaveBeenCalledWith(413);
-      expect(res.json).toHaveBeenCalledWith({ message: 'com_error_attachment_text_limit' });
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: 'AGENT_ATTACHMENT_TEXT_LIMIT_EXCEEDED',
+          message: expect.stringContaining('Split it into smaller files'),
+        }),
+      );
       const stream = { sendData: jest.fn(), sendError: jest.fn(), close: jest.fn() };
       expect(sendUploadPolicyError(res, stream, error, { tempFileId: 'upload' })).toBe(true);
       expect(stream.sendError).toHaveBeenCalledWith(
         expect.objectContaining({
-          message: 'com_error_attachment_text_limit',
+          error: 'AGENT_ATTACHMENT_TEXT_LIMIT_EXCEEDED',
+          message: expect.stringContaining('Split it into smaller files'),
           code: 413,
           temp_file_id: 'upload',
           display_to_user: true,

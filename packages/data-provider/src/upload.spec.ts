@@ -150,3 +150,34 @@ describe('uploadEventStream', () => {
     });
   });
 });
+
+describe('upload-size machine code compatibility', () => {
+  it.each(['json', 'sse'])(
+    'preserves a human fallback and stable code over %s',
+    async (transport) => {
+      const body = {
+        error: 'AGENT_ATTACHMENT_TEXT_LIMIT_EXCEEDED',
+        message: 'Split the file into smaller files.',
+        code: 413,
+        display_to_user: true,
+      };
+      authenticatedFetch.mockResolvedValue(
+        new Response(
+          transport === 'json'
+            ? JSON.stringify(body)
+            : createStream(`event:error\ndata:${JSON.stringify(body)}\n\n`),
+          {
+            status: transport === 'json' ? 413 : 200,
+            headers: {
+              'Content-Type': transport === 'json' ? 'application/json' : 'text/event-stream',
+            },
+          },
+        ),
+      );
+      await expect(uploadEventStream('/api/files', createFormData())).rejects.toMatchObject({
+        code: 413,
+        response: { data: { error: body.error, message: body.message } },
+      });
+    },
+  );
+});

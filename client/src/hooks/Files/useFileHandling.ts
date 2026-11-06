@@ -6,6 +6,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useRecoilValue, useSetRecoilState } from 'recoil';
 import {
   megabyte,
+  ATTACHMENT_TEXT_LIMIT_CODE,
   QueryKeys,
   Constants,
   EToolResources,
@@ -336,7 +337,10 @@ const useFileHandlingCore = (params: UseFileHandling | undefined, fileState: Fil
 
         if (error?.code === 'ERR_CANCELED') {
           errorMessage = 'com_error_files_upload_canceled';
-        } else if (error?.response?.data?.message === 'com_error_attachment_text_limit') {
+        } else if (
+          error?.response?.data?.error === ATTACHMENT_TEXT_LIMIT_CODE ||
+          error?.response?.data?.message === 'com_error_attachment_text_limit'
+        ) {
           errorMessage = localize('com_error_attachment_text_limit', {
             filename: (body.get('file') as File | null)?.name ?? '',
           });

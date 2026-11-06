@@ -14,6 +14,8 @@ import {
   hasActivePiiPatterns,
   replaceSpecialVars,
   providerEndpointMap,
+  prepareAttachmentReplayHistory,
+  selectAttachmentReplayBranch,
 } from 'librechat-data-provider';
 import type {
   AgentToolResources,
@@ -1495,7 +1497,10 @@ export async function initializeAgent(
     const [convoFileIds, threadMessages] = await Promise.all([
       readResolvedConversationFiles(runtime, conversationId) ?? db.getConvoFiles(conversationId),
       needsThreadWalk && getThreadMessages
-        ? getThreadMessages({ conversationId }, 'messageId parentMessageId files attachments')
+        ? getThreadMessages(
+            { conversationId },
+            'messageId parentMessageId files attachments isCreatedByUser error text content',
+          )
         : null,
     ]);
     const fileIds = convoFileIds ?? [];
@@ -1508,7 +1513,12 @@ export async function initializeAgent(
      *  this layer. */
     const threadFileIds =
       threadMessages && threadMessages.length > 0
-        ? getThreadData(threadMessages, threadAnchor).fileIds
+        ? getThreadData(
+            prepareAttachmentReplayHistory(
+              selectAttachmentReplayBranch(threadMessages, threadAnchor),
+            ),
+            threadAnchor,
+          ).fileIds
         : undefined;
 
     /* Linear continuation APIs supply no anchor: the Responses API always continues via

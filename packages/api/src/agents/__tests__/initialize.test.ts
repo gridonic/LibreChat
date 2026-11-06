@@ -3733,6 +3733,93 @@ describe('initializeAgent — code-generated file thread filter (regression)', (
     });
   });
 
+  it.each(['manual', 'rejected', 'retry-rejected'])(
+    'filters %s files before code and search tool hydration on the next turn',
+    async (reason) => {
+      const { agent, req, res, loadTools, db } = setupExecuteCodeAgent();
+      agent.tools = ['execute_code', Tools.file_search];
+      mockGetThreadData.mockImplementationOnce(realUtils.getThreadData);
+      const rejectedFile = {
+        file_id: 'omit',
+        ...(reason === 'manual' ? { excludedFromContext: true } : {}),
+        ...(reason === 'retry-rejected'
+          ? { excludedFromContext: false, replayAfterMessageId: 'old-error' }
+          : {}),
+      };
+      const messages = [
+        {
+          messageId: 'upload',
+          parentMessageId: Constants.NO_PARENT,
+          isCreatedByUser: true,
+          files: [rejectedFile, { file_id: 'keep' }],
+        },
+        {
+          messageId: 'old-error',
+          parentMessageId: 'upload',
+          isCreatedByUser: false,
+          error: true,
+          text: JSON.stringify({
+            code: 'AGENT_ATTACHMENT_LIMIT_EXCEEDED',
+            rejectedFileIds: reason === 'manual' ? [] : ['omit'],
+          }),
+        },
+        { messageId: 'retry', parentMessageId: 'old-error', isCreatedByUser: true, files: [] },
+        {
+          messageId: 'new-error',
+          parentMessageId: 'retry',
+          isCreatedByUser: false,
+          error: true,
+          text: JSON.stringify({
+            code: 'AGENT_ATTACHMENT_LIMIT_EXCEEDED',
+            rejectedFileIds: reason === 'retry-rejected' ? ['omit'] : [],
+          }),
+        },
+        {
+          messageId: 'sibling',
+          parentMessageId: 'upload',
+          isCreatedByUser: true,
+          files: [{ file_id: 'sibling-file' }],
+        },
+      ];
+      const getMessages = jest.fn().mockResolvedValue(messages);
+      const getToolFilesByIds = jest.fn().mockResolvedValue([]);
+      const getCodeGeneratedFiles = jest.fn().mockResolvedValue([]);
+      const getUserCodeFiles = jest.fn().mockResolvedValue([]);
+      const getDeferredProvisionFiles = jest.fn().mockResolvedValue([]);
+      const result = await initializeAgent(
+        {
+          req,
+          res,
+          agent,
+          loadTools,
+          endpointOption: { endpoint: EModelEndpoint.agents },
+          conversationId: 'conv-1',
+          parentMessageId: 'new-error',
+          allowedProviders: new Set([Providers.OPENAI]),
+          isInitialAgent: true,
+          codeEnvAvailable: true,
+        },
+        {
+          ...db,
+          getMessages,
+          getToolFilesByIds,
+          getCodeGeneratedFiles,
+          getUserCodeFiles,
+          getDeferredProvisionFiles,
+        },
+      );
+      expect(getToolFilesByIds.mock.calls[0][0]).toEqual(['keep']);
+      expect(getCodeGeneratedFiles.mock.calls[0][1]).toEqual(['keep']);
+      expect(getUserCodeFiles.mock.calls[0][0]).toEqual(['keep']);
+      expect(getDeferredProvisionFiles.mock.calls[0][0]).toEqual(['keep']);
+      expect(result.requestAttachments).toEqual([]);
+      expect(messages[0].files).toHaveLength(2);
+      const projection = getMessages.mock.calls[0][1];
+      for (const field of ['isCreatedByUser', 'error', 'text', 'content'])
+        expect(projection).toContain(field);
+    },
+  );
+
   it('selects messages.attachments alongside messages.files (regression)', async () => {
     /* Code-execution outputs land on `messages.attachments` via
      * `processCodeOutput`; user uploads land on `messages.files`.

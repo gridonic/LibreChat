@@ -342,7 +342,7 @@ export function isStepLimitError(error: unknown): boolean {
 /** Outward metadata shared by UI generation failures and both remote agent APIs. */
 export function getAgentErrorMetadata(
   error: unknown,
-): { status?: number; code?: string; retryable?: boolean } | undefined {
+): { status?: number; code?: string; retryable?: boolean; rejectedFileIds?: string[] } | undefined {
   if (error instanceof OboTokenResolutionError) {
     return {
       status: error.retryable ? 503 : 403,
@@ -355,12 +355,23 @@ export function getAgentErrorMetadata(
   if (!error || typeof error !== 'object') {
     return undefined;
   }
-  const candidate = error as { status?: unknown; statusCode?: unknown; code?: unknown };
+  const candidate = error as {
+    status?: unknown;
+    statusCode?: unknown;
+    code?: unknown;
+    rejectedFileIds?: unknown;
+  };
   const status = candidate.status ?? candidate.statusCode;
   return {
     ...(typeof status === 'number' && Number.isInteger(status) && status >= 400 && status < 600
       ? { status }
       : {}),
     ...(typeof candidate.code === 'string' ? { code: candidate.code } : {}),
+    ...(candidate.code === AGENT_ATTACHMENT_LIMIT_EXCEEDED &&
+    Array.isArray(candidate.rejectedFileIds) &&
+    candidate.rejectedFileIds.length > 0 &&
+    candidate.rejectedFileIds.every((id) => typeof id === 'string')
+      ? { rejectedFileIds: candidate.rejectedFileIds }
+      : {}),
   };
 }

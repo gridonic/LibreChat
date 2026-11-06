@@ -187,7 +187,11 @@ export function useSetMessageFileExcluded() {
                   ...message,
                   files: message.files?.map((file) =>
                     file.file_id === result.fileId
-                      ? { ...file, excludedFromContext: result.excluded }
+                      ? {
+                          ...file,
+                          excludedFromContext: result.excluded,
+                          replayAfterMessageId: result.replayAfterMessageId,
+                        }
                       : file,
                   ),
                 }

@@ -9,6 +9,7 @@ import {
 import type { IMongoFile } from '@librechat/data-schemas';
 import type { TokenCountFn } from '~/utils/text';
 import type { ServerRequest } from '~/types';
+import { isAttachmentObjectNotFoundError } from '~/files/encode/utils';
 import { filterFilesByEndpointRuntimeConfig } from '~/files/filter';
 import { AGENT_ATTACHMENT_LIMIT_EXCEEDED } from './errors';
 import { extractFileContext } from '~/files/context';
@@ -225,6 +226,7 @@ export class AgentAttachmentLimitError extends Error {
     readonly limitType: AgentAttachmentLimit,
     readonly observed: number,
     readonly limit: number,
+    readonly rejectedFileIds: string[] = [],
   ) {
     const labels: Record<AgentAttachmentLimit, string> = {
       count: 'attachment count',
@@ -363,7 +365,12 @@ export function assertAgentAttachmentLimits({
 
   for (const [limitType, observed, limit] of limits) {
     if (limit != null && limit > 0 && observed > limit) {
-      throw new AgentAttachmentLimitError(limitType, observed, limit);
+      throw new AgentAttachmentLimitError(
+        limitType,
+        observed,
+        limit,
+        stats.files.flatMap((file) => (file.fileId ? [file.fileId] : [])),
+      );
     }
   }
 
@@ -691,4 +698,18 @@ export async function buildAgentScopedContext({
   );
 
   return new Map(entries.filter(([, context]) => Boolean(context)));
+}
+
+/** Stable failure metadata is shared by preflight errors and failures inside a run. */
+export function serializeAttachmentRejection(error: unknown): string {
+  if (isAttachmentObjectNotFoundError(error)) return error.message;
+  if (!isAgentAttachmentLimitError(error)) return 'An attachment could not be processed.';
+  return JSON.stringify({
+    status: error.status,
+    code: error.code,
+    error: error.message,
+    ...(error instanceof AgentAttachmentLimitError && error.rejectedFileIds.length > 0
+      ? { rejectedFileIds: error.rejectedFileIds }
+      : {}),
+  });
 }

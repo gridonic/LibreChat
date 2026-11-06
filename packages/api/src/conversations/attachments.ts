@@ -5,7 +5,7 @@ import type { Response, Request } from 'express';
 type AttachmentRequest = Request<
   { conversationId: string; messageId: string; fileId: string },
   unknown,
-  { excluded?: boolean }
+  { excluded?: boolean; replayAfterMessageId?: string }
 > & { user?: { id: string }; config?: { fileConfig?: { allowMessageFileExclusion?: boolean } } };
 
 /** Authentication and conversation/child-thread authorization are supplied by the route. */
@@ -23,7 +23,12 @@ export function createMessageFileExclusionHandler(
     if (req.config?.fileConfig?.allowMessageFileExclusion !== true) {
       return res.status(403).json({ error: 'Attachment exclusion is disabled' });
     }
-    if (typeof req.body?.excluded !== 'boolean') {
+    if (
+      typeof req.body?.excluded !== 'boolean' ||
+      (req.body.replayAfterMessageId !== undefined &&
+        (typeof req.body.replayAfterMessageId !== 'string' ||
+          req.body.replayAfterMessageId.length > 256))
+    ) {
       return res.status(400).json({ error: 'Invalid attachment exclusion' });
     }
     try {
@@ -34,6 +39,9 @@ export function createMessageFileExclusionHandler(
         messageId: req.params.messageId,
         fileId: req.params.fileId,
         excluded: req.body.excluded,
+        ...(req.body.replayAfterMessageId
+          ? { replayAfterMessageId: req.body.replayAfterMessageId }
+          : {}),
       });
       return result == null
         ? res.status(404).json({ error: 'Attachment not found' })

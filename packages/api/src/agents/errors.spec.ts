@@ -302,6 +302,24 @@ describe('getAgentErrorMetadata', () => {
     },
   );
 
+  it('preserves file ids from an attachment rejection without forwarding arbitrary details', () => {
+    expect(
+      getAgentErrorMetadata({
+        status: 413,
+        code: 'AGENT_ATTACHMENT_LIMIT_EXCEEDED',
+        rejectedFileIds: ['attempted-file'],
+        privateDetail: 'private',
+      }),
+    ).toEqual({
+      status: 413,
+      code: 'AGENT_ATTACHMENT_LIMIT_EXCEEDED',
+      rejectedFileIds: ['attempted-file'],
+    });
+    expect(getAgentErrorMetadata({ code: 'OTHER', rejectedFileIds: ['private-file'] })).toEqual({
+      code: 'OTHER',
+    });
+  });
+
   it('keeps status precedence and code-only provider failures', () => {
     expect(getAgentErrorMetadata({ status: 409, statusCode: 401, code: 'RUN_REPLACED' })).toEqual({
       status: 409,

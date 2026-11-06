@@ -1,15 +1,17 @@
 /* eslint-disable i18next/no-literal-string */
 import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
-import type { TMessage } from 'librechat-data-provider';
+import type { TMessage, AttachmentReplayState } from 'librechat-data-provider';
 import Files from '../Files';
 
 const mockMutate = jest.fn();
 let mockExclusionState = { isLoading: false, isError: false };
+let mockReplay: Record<string, AttachmentReplayState> | undefined;
 let mockShareId: string | undefined;
 jest.mock('~/hooks', () => ({ useLocalize: () => (key: string) => key }));
 jest.mock('~/data-provider', () => ({
   useSetMessageFileExcluded: () => ({ mutate: mockMutate, ...mockExclusionState }),
+  useMessageAttachmentReplay: () => mockReplay,
   useGetFileConfig: () => ({ data: { allowMessageFileExclusion: true } }),
 }));
 jest.mock('@librechat/client', () => ({
@@ -69,6 +71,7 @@ const message = {
 } as TMessage;
 beforeEach(() => {
   mockMutate.mockReset();
+  mockReplay = undefined;
   mockShareId = undefined;
   mockExclusionState = { isLoading: false, isError: false };
 });
@@ -115,4 +118,32 @@ it('does not claim to remove context already held by a provider-managed Assistan
   expect(
     screen.queryByRole('button', { name: /com_ui_attachment_exclude/ }),
   ).not.toBeInTheDocument();
+});
+
+it('shows the effective skipped state after a failed retry and offers Include directly', () => {
+  mockReplay = { file: { excluded: true, rejectionMessageId: 'latest-rejection' } };
+  render(
+    <Files
+      message={{
+        ...message,
+        files: [
+          {
+            ...message.files![0],
+            excludedFromContext: false,
+            replayAfterMessageId: 'older-rejection',
+          },
+        ],
+      }}
+    />,
+  );
+  expect(screen.getByText('com_ui_attachment_rejected')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'com_ui_attachment_include: data.csv' }));
+  expect(mockMutate).toHaveBeenCalledWith({
+    conversationId: 'chat',
+    messageId: 'message',
+    fileId: 'file',
+    excluded: false,
+    replayAfterMessageId: 'latest-rejection',
+  });
+  expect(screen.getByText('file action')).toBeInTheDocument();
 });

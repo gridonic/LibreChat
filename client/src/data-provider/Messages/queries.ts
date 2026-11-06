@@ -1,9 +1,16 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useRef, useCallback, useContext } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Constants, QueryKeys, dataService } from 'librechat-data-provider';
+import {
+  Constants,
+  QueryKeys,
+  dataService,
+  getAttachmentReplayStates,
+  selectAttachmentReplayBranch,
+} from 'librechat-data-provider';
 import type { UseQueryOptions, QueryObserverResult, QueryClient } from '@tanstack/react-query';
 import type * as t from 'librechat-data-provider';
+import { MessagesViewContext } from '~/Providers/MessagesViewContext';
 import { isNotFoundError, logger } from '~/utils';
 
 type StableMessagesParams = {
@@ -175,3 +182,25 @@ export const useGetMessagesByConvoId = <TData = t.TMessage[]>(
     },
   );
 };
+
+export function useMessageAttachmentReplay(message?: t.TMessage) {
+  const view = useContext(MessagesViewContext);
+  const head = view?.latestMessageId ?? message?.messageId;
+  const hasFiles = !!message?.files?.length;
+  const select = useCallback(
+    (messages: t.TMessage[]) =>
+      !hasFiles
+        ? {}
+        : (getAttachmentReplayStates(selectAttachmentReplayBranch(messages, head))[
+            message?.messageId ?? ''
+          ] ?? {}),
+    [head, message?.messageId, hasFiles],
+  );
+  return useQuery<t.TMessage[], unknown, Record<string, t.AttachmentReplayState>>(
+    [QueryKeys.messages, message?.conversationId ?? ''],
+    {
+      enabled: false,
+      select,
+    },
+  ).data;
+}

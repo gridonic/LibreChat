@@ -2,7 +2,11 @@ import { useMemo, useState, useCallback, memo } from 'react';
 import { Button } from '@librechat/client';
 import { isAssistantsEndpoint } from 'librechat-data-provider';
 import type { TFile, TMessage } from 'librechat-data-provider';
-import { useGetFileConfig, useSetMessageFileExcluded } from '~/data-provider';
+import {
+  useGetFileConfig,
+  useSetMessageFileExcluded,
+  useMessageAttachmentReplay,
+} from '~/data-provider';
 import FileContainer from '~/components/Chat/Input/Files/FileContainer';
 import { usesImagePreview, hydrateFileDeliveryMetadata } from '~/utils';
 import { useFileMapContext, useShareContext } from '~/Providers';
@@ -14,6 +18,7 @@ const Files = ({ message }: { message?: TMessage }) => {
   const fileMap = useFileMapContext();
   const localize = useLocalize();
   const exclusion = useSetMessageFileExcluded();
+  const replay = useMessageAttachmentReplay(message);
   const { shareId, isSharedConvo } = useShareContext();
   const { data: fileConfig } = useGetFileConfig({ enabled: !shareId && !isSharedConvo });
   const files = useMemo(
@@ -47,30 +52,36 @@ const Files = ({ message }: { message?: TMessage }) => {
       !file.file_id
     )
       return null;
+    const state = replay?.[file.file_id];
+    const excluded = state?.excluded ?? file.excludedFromContext === true;
+    const automaticallyExcluded = excluded && file.excludedFromContext !== true;
     return (
       <div className="flex max-w-56 flex-col items-start gap-1">
-        {file.excludedFromContext && (
+        {excluded && (
           <span className="text-xs text-text-secondary">
-            {localize('com_ui_attachment_excluded')}
+            {localize(
+              automaticallyExcluded ? 'com_ui_attachment_rejected' : 'com_ui_attachment_excluded',
+            )}
           </span>
         )}
         <Button
           variant="ghost"
           size="sm"
           disabled={exclusion.isLoading}
-          aria-label={`${localize(file.excludedFromContext ? 'com_ui_attachment_include' : 'com_ui_attachment_exclude')}: ${file.filename ?? ''}`}
+          aria-label={`${localize(excluded ? 'com_ui_attachment_include' : 'com_ui_attachment_exclude')}: ${file.filename ?? ''}`}
           onClick={() =>
             exclusion.mutate({
               conversationId: message.conversationId!,
               messageId: message.messageId,
               fileId: file.file_id!,
-              excluded: !file.excludedFromContext,
+              excluded: !excluded,
+              ...(excluded && state?.rejectionMessageId
+                ? { replayAfterMessageId: state.rejectionMessageId }
+                : {}),
             })
           }
         >
-          {localize(
-            file.excludedFromContext ? 'com_ui_attachment_include' : 'com_ui_attachment_exclude',
-          )}
+          {localize(excluded ? 'com_ui_attachment_include' : 'com_ui_attachment_exclude')}
         </Button>
       </div>
     );

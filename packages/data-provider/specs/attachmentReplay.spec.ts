@@ -1,4 +1,8 @@
-import { prepareAttachmentReplayHistory } from '../src/attachmentReplay';
+import {
+  prepareAttachmentReplayHistory,
+  getAttachmentReplayStates,
+  selectAttachmentReplayBranch,
+} from '../src/attachmentReplay';
 import type { TMessage } from '../src/schemas';
 
 const user = (
@@ -60,7 +64,9 @@ describe('attachment replay recovery', () => {
     expect(stored[0].fileContext).toBe('previous combined text');
     expect(
       prepareAttachmentReplayHistory([
-        user('first', [{ file_id: 'restored', excludedFromContext: false }]),
+        user('first', [
+          { file_id: 'restored', excludedFromContext: false, replayAfterMessageId: 'failure' },
+        ]),
         failure('first'),
       ])[0].files,
     ).toHaveLength(1);
@@ -75,5 +81,57 @@ describe('attachment replay recovery', () => {
       ],
     };
     expect(prepareAttachmentReplayHistory([user('first'), response])[0].files).toEqual([]);
+  });
+});
+
+describe('attachment retry scope', () => {
+  const rejected = (id: string, parentMessageId: string, fileIds: string[]) => ({
+    ...failure(
+      parentMessageId,
+      JSON.stringify({ code: 'AGENT_ATTACHMENT_LIMIT_EXCEEDED', rejectedFileIds: fileIds }),
+    ),
+    messageId: id,
+  });
+  it('acknowledges only one rejection, then recovers after a failed retry with no new files', () => {
+    const stored = [
+      user('upload', [
+        { file_id: 'large', excludedFromContext: false, replayAfterMessageId: 'rejection-1' },
+      ]),
+      rejected('rejection-1', 'upload', ['large']),
+      { ...user('retry', []), parentMessageId: 'rejection-1' },
+    ];
+    expect(prepareAttachmentReplayHistory(stored)[0].files).toHaveLength(1);
+    const failedAgain = [...stored, rejected('rejection-2', 'retry', ['large'])];
+    expect(prepareAttachmentReplayHistory(failedAgain)[0].files).toEqual([]);
+    expect(getAttachmentReplayStates(failedAgain).upload.large).toEqual({
+      excluded: true,
+      rejectionMessageId: 'rejection-2',
+    });
+    expect(stored[0].files).toHaveLength(1);
+  });
+  it('does not allow a stored false flag to bypass a later rejection', () => {
+    expect(
+      prepareAttachmentReplayHistory([
+        user('upload', [{ file_id: 'large', excludedFromContext: false }]),
+        rejected('rejection', 'upload', ['large']),
+      ])[0].files,
+    ).toEqual([]);
+  });
+  it('keeps a newly attached reference active after an older rejection of the same upload', () => {
+    const messages = [user('upload'), rejected('rejection', 'upload', ['large']), user('reattach')];
+    const result = prepareAttachmentReplayHistory(messages);
+    expect(result[0].files).toEqual([]);
+    expect(result[2].files).toHaveLength(1);
+  });
+  it('ignores sibling rejections and cycles when selecting the next turn branch', () => {
+    const upload = user('upload');
+    const branch = { ...user('branch', []), parentMessageId: 'upload' };
+    const sibling = rejected('sibling', 'upload', ['large']);
+    const selected = selectAttachmentReplayBranch([upload, sibling, branch], 'branch');
+    expect(selected.map((m) => m.messageId)).toEqual(['upload', 'branch']);
+    expect(prepareAttachmentReplayHistory(selected)[0].files).toHaveLength(1);
+    expect(
+      selectAttachmentReplayBranch([{ messageId: 'cycle', parentMessageId: 'cycle' }], 'cycle'),
+    ).toHaveLength(1);
   });
 });

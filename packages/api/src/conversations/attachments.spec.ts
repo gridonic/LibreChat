@@ -58,4 +58,35 @@ describe('message attachment exclusion handler', () => {
     expect(res.status).toHaveBeenCalledWith(500);
     expect(JSON.stringify(res.json.mock.calls)).not.toContain('private database');
   });
+
+  it('persists the rejection acknowledged by an explicit retry', async () => {
+    const setMessageFileExcluded = jest.fn().mockResolvedValue({
+      messageId: 'm',
+      fileId: 'f',
+      excluded: false,
+      replayAfterMessageId: 'rejection',
+    });
+    const handler = createMessageFileExclusionHandler({
+      setMessageFileExcluded,
+      rejectSubagentThreadWrite: jest.fn().mockResolvedValue(false),
+    });
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis() };
+    await handler(
+      {
+        user: { id: 'owner' },
+        config: { fileConfig: { allowMessageFileExclusion: true } },
+        params: { conversationId: 'c', messageId: 'm', fileId: 'f' },
+        body: { excluded: false, replayAfterMessageId: 'rejection' },
+      } as never,
+      res as never,
+    );
+    expect(setMessageFileExcluded).toHaveBeenCalledWith({
+      userId: 'owner',
+      conversationId: 'c',
+      messageId: 'm',
+      fileId: 'f',
+      excluded: false,
+      replayAfterMessageId: 'rejection',
+    });
+  });
 });

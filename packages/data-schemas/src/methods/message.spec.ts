@@ -5499,10 +5499,26 @@ describe('attachment context exclusion', () => {
     await Message.updateOne({ messageId: id }, { $set: { endpoint: 'assistants' } });
     expect(await method(scope)).toBeNull();
     await Message.updateOne({ messageId: id }, { $set: { endpoint: 'agents' } });
-    await method({ ...scope, excluded: false });
+    expect(await method({ ...scope, excluded: false, replayAfterMessageId: 'rejection' })).toEqual({
+      messageId: id,
+      fileId: 'first',
+      excluded: false,
+      replayAfterMessageId: 'rejection',
+    });
     expect((await Message.findOne({ messageId: id }).lean())?.files).toEqual([
-      { file_id: 'first', filename: 'original.csv', excludedFromContext: false },
+      {
+        file_id: 'first',
+        filename: 'original.csv',
+        excludedFromContext: false,
+        replayAfterMessageId: 'rejection',
+      },
       { file_id: 'second' },
     ]);
+    await method(scope);
+    expect((await Message.findOne({ messageId: id }).lean())?.files?.[0]).toEqual({
+      file_id: 'first',
+      filename: 'original.csv',
+      excludedFromContext: true,
+    });
   });
 });
