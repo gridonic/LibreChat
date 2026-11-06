@@ -11,6 +11,7 @@ import {
   AgentAttachmentLimitError,
   AgentAttachmentPolicyError,
   assertAgentAttachmentLimits,
+  assertAgentUploadTextLimits,
   createAgentMemoryCallback,
   collectAgentAttachmentStats,
   collectFileIds,
@@ -781,5 +782,32 @@ describe('files that belong to a tool', () => {
         countRepeatedExtractedText: true,
       }),
     ).not.toThrow();
+  });
+});
+
+describe('agent upload extracted-text admission', () => {
+  it('rejects an oversized text upload before it becomes a sent attachment', () => {
+    expect(() =>
+      assertAgentUploadTextLimits({
+        endpoint: 'agents',
+        messageAttachment: true,
+        text: '123456',
+        req: { config: { fileConfig: { fileContextCharLimit: 5 } } },
+      }),
+    ).toThrow(expect.objectContaining({ code: 'AGENT_ATTACHMENT_LIMIT_EXCEEDED', status: 413 }));
+  });
+  it('keeps supported uploads and tool-only/agent-setup routes unchanged', () => {
+    for (const input of [
+      { endpoint: 'agents', messageAttachment: true, text: '123' },
+      { endpoint: 'agents', messageAttachment: false, text: '123456' },
+      { endpoint: 'openAI', messageAttachment: true, text: '123456' },
+    ]) {
+      expect(() =>
+        assertAgentUploadTextLimits({
+          ...input,
+          req: { config: { fileConfig: { fileContextCharLimit: 5 } } },
+        }),
+      ).not.toThrow();
+    }
   });
 });

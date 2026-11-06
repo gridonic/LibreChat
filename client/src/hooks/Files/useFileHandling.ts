@@ -336,6 +336,10 @@ const useFileHandlingCore = (params: UseFileHandling | undefined, fileState: Fil
 
         if (error?.code === 'ERR_CANCELED') {
           errorMessage = 'com_error_files_upload_canceled';
+        } else if (error?.response?.data?.message === 'com_error_attachment_text_limit') {
+          errorMessage = localize('com_error_attachment_text_limit', {
+            filename: (body.get('file') as File | null)?.name ?? '',
+          });
         } else if (error?.response?.data?.message) {
           errorMessage = error.response.data.message;
         }

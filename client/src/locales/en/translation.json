@@ -3057,5 +3057,10 @@
   "com_insights_invalid_date_range": "Choose an end date after the start date, within {{days}} days.",
   "com_insights_sparkline_accessibility": "{{label}} over time",
   "com_nav_mobile_drawer_strip": "Show chat beside the sidebar on mobile",
-  "com_nav_mobile_drawer_strip_info": "The sidebar stops short of the edge so a strip of the conversation stays visible. Tapping it closes the sidebar."
+  "com_nav_mobile_drawer_strip_info": "The sidebar stops short of the edge so a strip of the conversation stays visible. Tapping it closes the sidebar.",
+  "com_error_attachment_text_limit": "“{{filename}}” contains too much text to send. Split it into smaller files or upload only the relevant rows.",
+  "com_ui_attachment_exclude": "Exclude from future messages",
+  "com_ui_attachment_include": "Include in future messages",
+  "com_ui_attachment_excluded": "Excluded from future messages. The original file is still available.",
+  "com_ui_attachment_update_failed": "Could not change the attachment. Please try again."
 }

@@ -8,6 +8,7 @@ const {
   stripReasoningLabelMetadata,
 } = require('librechat-data-provider');
 const {
+  createMessageFileExclusionHandler,
   unescapeLaTeX,
   countTokens,
   sendFeedbackScore,
@@ -578,6 +579,13 @@ router.get('/:conversationId/:messageId', validateMessageReq, async (req, res) =
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+router.patch(
+  '/:conversationId/:messageId/files/:fileId',
+  validateMessageReq,
+  configMiddleware,
+  createMessageFileExclusionHandler({ ...db, rejectSubagentThreadWrite }),
+);
 
 router.put('/:conversationId/:messageId', messageMutationMiddleware, async (req, res) => {
   try {

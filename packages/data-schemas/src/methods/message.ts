@@ -2,6 +2,7 @@ import {
   backgroundResultMetadata,
   HITL_MESSAGE_FILTER_FIELDS,
   RetentionMode,
+  EModelEndpoint,
 } from 'librechat-data-provider';
 import type { DeleteResult, FilterQuery, Model, Types, UpdateQuery } from 'mongoose';
 import type { UserSubmittedMessageFieldPath } from 'librechat-data-provider';
@@ -646,6 +647,13 @@ function toSettledAt(value: unknown): Date | undefined {
 }
 
 export interface MessageMethods {
+  setMessageFileExcluded(input: {
+    userId: string;
+    conversationId: string;
+    messageId: string;
+    fileId: string;
+    excluded: boolean;
+  }): Promise<{ messageId: string; fileId: string; excluded: boolean } | null>;
   saveMessage(
     ctx: {
       userId: string;
@@ -3754,7 +3762,33 @@ export function createMessageMethods(mongoose: typeof import('mongoose')): Messa
     return Message.meiliSearch(query, searchOptions, hydrate);
   }
 
+  async function setMessageFileExcluded(
+    input: Parameters<MessageMethods['setMessageFileExcluded']>[0],
+  ) {
+    const Message = mongoose.models.Message as Model<IMessage>;
+    const message = await Message.findOneAndUpdate(
+      {
+        user: input.userId,
+        conversationId: input.conversationId,
+        messageId: input.messageId,
+        isCreatedByUser: true,
+        'files.file_id': input.fileId,
+        endpoint: { $nin: [EModelEndpoint.assistants, EModelEndpoint.azureAssistants] },
+      },
+      { $set: { 'files.$.excludedFromContext': input.excluded } },
+      { new: true, projection: { messageId: 1 } },
+    ).lean();
+    return message == null
+      ? null
+      : {
+          messageId: message.messageId,
+          fileId: input.fileId,
+          excluded: input.excluded,
+        };
+  }
+
   return {
+    setMessageFileExcluded,
     saveMessage,
     bulkSaveMessages,
     recordMessage,

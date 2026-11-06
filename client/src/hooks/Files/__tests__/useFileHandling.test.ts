@@ -211,6 +211,29 @@ describe('useFileHandling', () => {
 
   const loadHook = async () => (await import('../useFileHandling')).default;
 
+  it('names an oversized document and removes it from the composer before retry', async () => {
+    const consoleLog = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    const useFileHandling = await loadHook();
+    const { result } = renderHook(() => useFileHandling());
+    await act(async () => {
+      await result.current.handleFiles([
+        new File(['keyword,data'], 'keywords.csv', { type: 'text/csv' }),
+      ]);
+    });
+    const body = mockMutate.mock.calls[0][0] as FormData;
+    act(() =>
+      mockUploadOptions.onError?.(
+        { response: { status: 413, data: { message: 'com_error_attachment_text_limit' } } },
+        body,
+      ),
+    );
+    expect(mockDeleteFileById).toHaveBeenCalledWith(body.get('file_id'));
+    expect(mockLocalize).toHaveBeenCalledWith('com_error_attachment_text_limit', {
+      filename: 'keywords.csv',
+    });
+    consoleLog.mockRestore();
+  });
+
   it('removes rejected provider audio and localizes the upload error before retry', async () => {
     const consoleLog = jest.spyOn(console, 'log').mockImplementation(() => undefined);
     const useFileHandling = await loadHook();

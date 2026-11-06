@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import { getContentFilterError } from '~/middleware/contentFilter';
+import { isAgentAttachmentLimitError } from '~/agents/attachments';
 import { isEnabled } from '~/utils';
 
 const HEARTBEAT_INTERVAL_MS = 1000;
@@ -53,6 +54,20 @@ export function sendUploadPolicyError(
   error: unknown,
   context: UploadPolicyErrorContext = {},
 ): boolean {
+  if (isAgentAttachmentLimitError(error)) {
+    const body = { message: 'com_error_attachment_text_limit' };
+    if (sseStream) {
+      sseStream.sendError({
+        ...body,
+        code: 413,
+        temp_file_id: context.tempFileId,
+        display_to_user: true,
+      });
+    } else {
+      res.status(413).json(body);
+    }
+    return true;
+  }
   const policyError = getContentFilterError(error);
   if (policyError == null) {
     return false;

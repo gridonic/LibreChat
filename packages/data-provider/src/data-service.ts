@@ -1695,3 +1695,15 @@ export interface ActiveJobsResponse {
 export const getActiveJobs = (): Promise<ActiveJobsResponse> => {
   return request.get(endpoints.activeJobs());
 };
+
+export function setMessageFileExcluded(payload: {
+  conversationId: string;
+  messageId: string;
+  fileId: string;
+  excluded: boolean;
+}): Promise<{ messageId: string; fileId: string; excluded: boolean }> {
+  return request.patch(
+    endpoints.messageFileExclusion(payload.conversationId, payload.messageId, payload.fileId),
+    { excluded: payload.excluded },
+  );
+}

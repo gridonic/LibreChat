@@ -266,6 +266,38 @@ describe('BaseClient', () => {
   });
 
   describe('loadHistory', () => {
+    it('recovers from a rejected upload before hydrating the next request history', async () => {
+      const rows = [
+        {
+          messageId: 'upload',
+          parentMessageId: Constants.NO_PARENT,
+          isCreatedByUser: true,
+          text: 'Read it',
+          files: [{ file_id: 'too-large' }],
+        },
+        {
+          messageId: 'rejected',
+          parentMessageId: 'upload',
+          isCreatedByUser: false,
+          error: true,
+          text: JSON.stringify({ code: 'AGENT_ATTACHMENT_LIMIT_EXCEEDED' }),
+        },
+      ];
+      getMessages.mockResolvedValueOnce(rows);
+      const addPreviousAttachments = jest.fn(async (messages) => messages);
+      const receiver = Object.assign(Object.create(BaseClientClass.prototype), {
+        user: 'owner',
+        constructor: BaseClientClass,
+        addPreviousAttachments,
+      });
+      await receiver.loadHistory('convo-1', 'rejected');
+      expect(
+        addPreviousAttachments.mock.calls[0][0].find((message) => message.messageId === 'upload')
+          .files,
+      ).toEqual([]);
+      expect(rows[0].files).toEqual([{ file_id: 'too-large' }]);
+    });
+
     const receiver = Object.assign(Object.create(BaseClientClass.prototype), {
       user: 'user-1',
       getMessageMapMethod: null,

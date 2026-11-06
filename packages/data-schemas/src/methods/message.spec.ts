@@ -5466,3 +5466,43 @@ describe('Message Operations', () => {
     });
   });
 });
+
+describe('attachment context exclusion', () => {
+  it('is scoped to the owner, conversation, message and attachment; original refs survive', async () => {
+    const method = createMessageMethods(mongoose).setMessageFileExcluded;
+    const id = uuidv4();
+    const stored = await Message.create({
+      user: 'attachment-owner',
+      conversationId: uuidv4(),
+      messageId: id,
+      text: 'keep',
+      isCreatedByUser: true,
+      files: [{ file_id: 'first', filename: 'original.csv' }, { file_id: 'second' }],
+    });
+    const scope = {
+      userId: 'attachment-owner',
+      conversationId: stored.conversationId,
+      messageId: id,
+      fileId: 'first',
+      excluded: true,
+    };
+    expect(await method({ ...scope, userId: 'other-owner' })).toBeNull();
+    expect(await method({ ...scope, conversationId: uuidv4() })).toBeNull();
+    expect(await method({ ...scope, fileId: 'unattached' })).toBeNull();
+    expect(await method(scope)).toEqual({ messageId: id, fileId: 'first', excluded: true });
+    const row = await Message.findOne({ messageId: id }).lean();
+    expect(row?.files).toEqual([
+      { file_id: 'first', filename: 'original.csv', excludedFromContext: true },
+      { file_id: 'second' },
+    ]);
+    expect(row?.text).toBe('keep');
+    await Message.updateOne({ messageId: id }, { $set: { endpoint: 'assistants' } });
+    expect(await method(scope)).toBeNull();
+    await Message.updateOne({ messageId: id }, { $set: { endpoint: 'agents' } });
+    await method({ ...scope, excluded: false });
+    expect((await Message.findOne({ messageId: id }).lean())?.files).toEqual([
+      { file_id: 'first', filename: 'original.csv', excludedFromContext: false },
+      { file_id: 'second' },
+    ]);
+  });
+});

@@ -112,6 +112,7 @@ export const DynamicQueryKeys = {
 } as const;
 
 export enum MutationKeys {
+  setMessageFileExcluded = 'setMessageFileExcluded',
   subagentControl = 'subagentControl',
   cancelBackgroundTasks = 'cancelBackgroundTasks',
   enqueueAgentQueuedTurn = 'enqueueAgentQueuedTurn',

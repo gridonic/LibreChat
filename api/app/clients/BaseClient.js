@@ -46,6 +46,7 @@ const {
   isBedrockDocumentType,
   HITL_MESSAGE_FILTER_FIELDS,
   stripReasoningLabelMetadata,
+  prepareAttachmentReplayHistory,
   resolveTurnLLMDeliveryPath,
   resolveUseResponsesApi,
 } = require('librechat-data-provider');
@@ -1321,7 +1322,7 @@ class BaseClient {
       }
     }
 
-    return this.addPreviousAttachments(_messages);
+    return this.addPreviousAttachments(prepareAttachmentReplayHistory(_messages));
   }
 
   /**

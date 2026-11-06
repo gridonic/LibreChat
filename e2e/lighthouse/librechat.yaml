@@ -5,3 +5,6 @@ endpoints:
     titleConvo: false
 openapi:
   enabled: true
+
+fileConfig:
+  allowMessageFileExclusion: true

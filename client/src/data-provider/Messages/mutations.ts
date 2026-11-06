@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { dataService, QueryKeys, Constants } from 'librechat-data-provider';
+import { dataService, QueryKeys, Constants, MutationKeys } from 'librechat-data-provider';
 import type { UseMutationResult, UseMutationOptions } from '@tanstack/react-query';
 import type * as t from 'librechat-data-provider';
 
@@ -172,3 +172,29 @@ export const useBranchMessageMutation = (
 
   return useMutation(mutationOptions);
 };
+
+export function useSetMessageFileExcluded() {
+  const queryClient = useQueryClient();
+  return useMutation(dataService.setMessageFileExcluded, {
+    mutationKey: [MutationKeys.setMessageFileExcluded],
+    onSuccess: (result, input) => {
+      queryClient.setQueryData<t.TMessage[]>(
+        [QueryKeys.messages, input.conversationId],
+        (messages) =>
+          messages?.map((message) =>
+            message.messageId === result.messageId
+              ? {
+                  ...message,
+                  files: message.files?.map((file) =>
+                    file.file_id === result.fileId
+                      ? { ...file, excludedFromContext: result.excluded }
+                      : file,
+                  ),
+                }
+              : message,
+          ),
+      );
+      queryClient.invalidateQueries([QueryKeys.messages, input.conversationId]);
+    },
+  });
+}

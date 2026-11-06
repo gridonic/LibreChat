@@ -7,6 +7,7 @@ import {
   startUploadSseStream,
 } from './sse';
 import { ContentFilterInputTooLargeError, UninspectableFileError } from '~/protection/files';
+import { AgentAttachmentLimitError } from '~/agents/attachments';
 
 describe('sse', () => {
   const createMockReq = (accept?: string): Request =>
@@ -223,6 +224,23 @@ describe('sse', () => {
   });
 
   describe('sendUploadPolicyError', () => {
+    it('returns the same localizable upload-size error over JSON and SSE', () => {
+      const error = new AgentAttachmentLimitError('extracted_text', 1001, 1000);
+      const res = createMockRes();
+      expect(sendUploadPolicyError(res, null, error)).toBe(true);
+      expect(res.status).toHaveBeenCalledWith(413);
+      expect(res.json).toHaveBeenCalledWith({ message: 'com_error_attachment_text_limit' });
+      const stream = { sendData: jest.fn(), sendError: jest.fn(), close: jest.fn() };
+      expect(sendUploadPolicyError(res, stream, error, { tempFileId: 'upload' })).toBe(true);
+      expect(stream.sendError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: 'com_error_attachment_text_limit',
+          code: 413,
+          temp_file_id: 'upload',
+          display_to_user: true,
+        }),
+      );
+    });
     it('sends structured policy errors as JSON', () => {
       const res = createMockRes();
 
