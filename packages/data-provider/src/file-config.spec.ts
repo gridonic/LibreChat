@@ -2351,3 +2351,9 @@ describe('file deletion retry limit', () => {
     expect(fileConfigSchema.safeParse({ deletionRetryLimit }).success).toBe(false);
   });
 });
+
+it('keeps message-file exclusion opt-in and accepts its explicit configuration', () => {
+  expect(mergeFileConfig({}).allowMessageFileExclusion).toBe(false);
+  expect(mergeFileConfig({ allowMessageFileExclusion: true }).allowMessageFileExclusion).toBe(true);
+  expect(fileConfigSchema.safeParse({ allowMessageFileExclusion: true }).success).toBe(true);
+});

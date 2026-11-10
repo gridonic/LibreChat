@@ -1,4 +1,6 @@
+import { ATTACHMENT_TEXT_LIMIT_CODE } from 'librechat-data-provider';
 import type { Request, Response } from 'express';
+import { isAgentAttachmentLimitError } from '~/agents/attachments';
 import { getContentFilterError } from '~/middleware/contentFilter';
 import { SpreadsheetLimitError } from './documents/workbook';
 import { SpreadsheetBusyError } from './upload/errors';
@@ -74,6 +76,24 @@ export function sendUploadPolicyError(
     } else {
       if (retryable) res.setHeader('Retry-After', '1');
       res.status(error.userErrorStatusCode).json(body);
+    }
+    return true;
+  }
+  if (isAgentAttachmentLimitError(error)) {
+    const body = {
+      error: ATTACHMENT_TEXT_LIMIT_CODE,
+      message:
+        'The attachment contains too much extracted text to send. Split it into smaller files or upload only the relevant rows.',
+    };
+    if (sseStream) {
+      sseStream.sendError({
+        ...body,
+        code: 413,
+        temp_file_id: context.tempFileId,
+        display_to_user: true,
+      });
+    } else {
+      res.status(413).json(body);
     }
     return true;
   }

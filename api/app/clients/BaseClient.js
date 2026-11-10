@@ -58,6 +58,8 @@ const {
   isBedrockDocumentType,
   HITL_MESSAGE_FILTER_FIELDS,
   stripReasoningLabelMetadata,
+  prepareAttachmentReplayHistory,
+  getAttachmentReplayRequest,
   resolveTurnLLMDeliveryPath,
   resolveUseResponsesApi,
 } = require('librechat-data-provider');
@@ -899,7 +901,11 @@ class BaseClient {
     if (!isEdited && !this.skipSaveUserMessage) {
       const reqFiles = this.options.req?.body?.files;
       if (reqFiles && Array.isArray(this.options.attachments)) {
-        const files = buildMessageFiles(reqFiles, this.options.attachments);
+        const files = buildMessageFiles(
+          reqFiles,
+          this.options.attachments,
+          this.options.messageFiles,
+        );
         if (files.length > 0) {
           userMessage.files = files;
         }
@@ -1325,7 +1331,12 @@ class BaseClient {
       }
     }
 
-    return this.addPreviousAttachments(_messages);
+    return this.addPreviousAttachments(
+      prepareAttachmentReplayHistory(_messages, {
+        messages,
+        request: getAttachmentReplayRequest(this.options?.req?.body),
+      }),
+    );
   }
 
   /**

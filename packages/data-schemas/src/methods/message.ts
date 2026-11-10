@@ -3,6 +3,7 @@ import {
   HITL_MESSAGE_FILTER_FIELDS,
   isForcedTemporaryRetention,
   RetentionMode,
+  EModelEndpoint,
 } from 'librechat-data-provider';
 import type { ClientSession, DeleteResult, FilterQuery, Model, Types, UpdateQuery } from 'mongoose';
 import type { UserSubmittedMessageFieldPath } from 'librechat-data-provider';
@@ -279,7 +280,8 @@ function getSteerUserSubmittedPaths(content: unknown): string[] {
 function sanitizeMessageUpdate(update: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(
     Object.entries(update).filter(
-      ([key, value]) => value !== undefined && !['_id', 'tenantId', '__v'].includes(key),
+      ([key, value]) =>
+        value !== undefined && !['_id', 'tenantId', '__v', 'attachmentReplay'].includes(key),
     ),
   );
 }
@@ -770,6 +772,20 @@ export interface MessageMethods {
     conversationId: string;
     messageIds: readonly string[];
   }): Promise<PrivateTextRead[]>;
+  setMessageFileExcluded(input: {
+    userId: string;
+    conversationId: string;
+    messageId: string;
+    fileId: string;
+    excluded: boolean;
+    replayAfterMessageId?: string;
+  }): Promise<{
+    messageId: string;
+    fileId: string;
+    excluded: boolean;
+    replayAfterMessageId?: string;
+    attachmentReplay: NonNullable<IMessage['attachmentReplay']>;
+  } | null>;
   saveMessage(
     ctx: {
       userId: string;
@@ -4472,7 +4488,64 @@ export function createMessageMethods(
       .lean<PrivateTextRead[]>();
   }
 
+  async function setMessageFileExcluded(
+    input: Parameters<MessageMethods['setMessageFileExcluded']>[0],
+  ) {
+    const Message = mongoose.models.Message as Model<IMessage>;
+    const message = await Message.findOneAndUpdate(
+      {
+        user: input.userId,
+        conversationId: input.conversationId,
+        messageId: input.messageId,
+        isCreatedByUser: true,
+        'files.file_id': input.fileId,
+        endpoint: { $nin: [EModelEndpoint.assistants, EModelEndpoint.azureAssistants] },
+      },
+      [
+        {
+          $set: {
+            attachmentReplay: {
+              $concatArrays: [
+                {
+                  $filter: {
+                    input: { $ifNull: ['$attachmentReplay', []] },
+                    as: 'decision',
+                    cond: { $ne: ['$$decision.fileId', { $literal: input.fileId }] },
+                  },
+                },
+                {
+                  $literal: [
+                    {
+                      fileId: input.fileId,
+                      excluded: input.excluded,
+                      ...(!input.excluded && input.replayAfterMessageId
+                        ? { replayAfterMessageId: input.replayAfterMessageId }
+                        : {}),
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      ],
+      { new: true, projection: { messageId: 1, attachmentReplay: 1 } },
+    ).lean();
+    return message == null
+      ? null
+      : {
+          messageId: message.messageId,
+          fileId: input.fileId,
+          excluded: input.excluded,
+          attachmentReplay: message.attachmentReplay ?? [],
+          ...(!input.excluded && input.replayAfterMessageId
+            ? { replayAfterMessageId: input.replayAfterMessageId }
+            : {}),
+        };
+  }
+
   return {
+    setMessageFileExcluded,
     hasPersistedPrivateText,
     getPersistedPrivateTextId,
     getPrivateMessageTexts,

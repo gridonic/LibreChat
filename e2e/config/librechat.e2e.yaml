@@ -158,6 +158,7 @@ fileConfig:
   # Preserve original generated images while testing the separate model image budget.
   imageGeneration:
     percentage: 100
+  allowMessageFileExclusion: true
   endpoints:
     'Mock Run Files':
       defaultLLMDeliveryPath:

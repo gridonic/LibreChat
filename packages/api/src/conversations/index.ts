@@ -1,5 +1,6 @@
 export * from './announce';
 export * from './archive';
+export * from './attachments';
 export * from './chatgpt';
 export * from './files';
 export * from './filters';

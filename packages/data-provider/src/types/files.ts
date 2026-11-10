@@ -79,6 +79,7 @@ export type FileConfig = {
   fileContextSizeLimit?: number;
   /** Maximum aggregate extracted-text characters admitted into one agent turn. */
   fileContextCharLimit?: number;
+  allowMessageFileExclusion?: boolean;
   serverFileSizeLimit?: number;
   avatarSizeLimit?: number;
   clientImageResize?: {
@@ -126,6 +127,7 @@ export type FileConfigInput = {
   avatarSizeLimit?: number;
   fileContextSizeLimit?: number;
   fileContextCharLimit?: number;
+  allowMessageFileExclusion?: boolean;
   clientImageResize?: {
     enabled?: boolean;
     maxWidth?: number;
@@ -181,6 +183,10 @@ export type TFile = {
   message?: string;
   file_id: string;
   temp_file_id?: string;
+  /** Per-message reference only; does not delete or change the original uploaded file. */
+  excludedFromContext?: boolean;
+  /** The rejection acknowledged by this explicit retry. A later rejection supersedes it. */
+  replayAfterMessageId?: string;
   bytes: number;
   embedded: boolean;
   /** Every vector namespace has been tracked since this record was inserted. */

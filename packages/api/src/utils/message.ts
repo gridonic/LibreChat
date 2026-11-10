@@ -1,4 +1,8 @@
-import { Constants, MAX_FILE_TEXT_PREVIEW_LENGTH } from 'librechat-data-provider';
+import {
+  Constants,
+  getMessageAttachmentRefs,
+  MAX_FILE_TEXT_PREVIEW_LENGTH,
+} from 'librechat-data-provider';
 import type { TFile, TMessage } from 'librechat-data-provider';
 
 /** Shared wire bounds, not deployment settings. */
@@ -118,6 +122,7 @@ export function sanitizeFileForTransmit<T extends FilePreviewSource>(file: T): S
 export function buildMessageFiles<T extends FilePreviewSource>(
   requestFiles: RequestFile[],
   attachments: T[],
+  messageFiles?: T[],
 ): SanitizedFile<T>[] {
   const requestFileIds = new Set<string>();
   for (const f of requestFiles) {
@@ -127,7 +132,7 @@ export function buildMessageFiles<T extends FilePreviewSource>(
   }
 
   const files: SanitizedFile<T>[] = [];
-  for (const attachment of attachments) {
+  for (const attachment of messageFiles ?? attachments) {
     if (attachment.file_id != null && requestFileIds.has(attachment.file_id)) {
       files.push(sanitizeFileForTransmit(attachment));
     }
@@ -222,6 +227,7 @@ type ThreadMessage = {
   messageId: string;
   parentMessageId?: string | null;
   files?: Array<{ file_id?: string }>;
+  content?: TMessage['content'];
   attachments?: Array<{ file_id?: string }>;
 };
 
@@ -277,12 +283,8 @@ export function getThreadData(
      *  `attachments` (code-execution outputs from `processCodeOutput`).
      *  Walking only one half drops half the relevant refs — see
      *  the type doc on `ThreadMessage` for the role split. */
-    if (message.files) {
-      for (const file of message.files) {
-        if (file.file_id) {
-          fileIdSet.add(file.file_id);
-        }
-      }
+    for (const file of getMessageAttachmentRefs(message)) {
+      if (file.file_id) fileIdSet.add(file.file_id);
     }
     if (message.attachments) {
       for (const attachment of message.attachments) {

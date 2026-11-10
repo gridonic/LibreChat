@@ -173,3 +173,29 @@ export const useBranchMessageMutation = (
 
   return useMutation(mutationOptions);
 };
+
+export function useSetMessageFileExcluded() {
+  const queryClient = useQueryClient();
+  return useMutation(dataService.setMessageFileExcluded, {
+    mutationKey: [MutationKeys.setMessageFileExcluded],
+    onSuccess: (result, input) => {
+      queryClient.setQueryData<Record<string, t.AttachmentReplayDecision[]>>(
+        [QueryKeys.attachmentReplay, input.conversationId],
+        (policies) => ({ ...policies, [result.messageId]: result.attachmentReplay }),
+      );
+      queryClient.setQueryData<t.TMessage[]>(
+        [QueryKeys.messages, input.conversationId],
+        (messages) =>
+          messages?.map((message) =>
+            message.messageId === result.messageId
+              ? {
+                  ...message,
+                  attachmentReplay: result.attachmentReplay,
+                }
+              : message,
+          ),
+      );
+      queryClient.invalidateQueries([QueryKeys.messages, input.conversationId]);
+    },
+  });
+}

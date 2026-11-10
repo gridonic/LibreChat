@@ -29,6 +29,7 @@ const {
 } = require('librechat-data-provider');
 const { logger, runAsSystem } = require('@librechat/data-schemas');
 const {
+  assertAgentUploadTextLimits,
   sanitizeFilename,
   isMissingStorageError,
   createDeleteFileWithSecondaryStorage,
@@ -964,6 +965,7 @@ const processAgentFileUpload = async ({ req, res, metadata, sseStream }) => {
      * @return {Promise<void>}
      */
     const createTextFile = async ({ text, isTranscript = false }) => {
+      assertAgentUploadTextLimits({ endpoint: metadata.endpoint, messageAttachment, text, req });
       if (!isTranscript) {
         assertExtractedTextInspectable({
           filters: appConfig?.filters,
