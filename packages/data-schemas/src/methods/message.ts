@@ -2,6 +2,7 @@ import {
   backgroundResultMetadata,
   HITL_MESSAGE_FILTER_FIELDS,
   RetentionMode,
+  EModelEndpoint,
 } from 'librechat-data-provider';
 import type { DeleteResult, FilterQuery, Model, Types, UpdateQuery } from 'mongoose';
 import type { UserSubmittedMessageFieldPath } from 'librechat-data-provider';
@@ -646,6 +647,20 @@ function toSettledAt(value: unknown): Date | undefined {
 }
 
 export interface MessageMethods {
+  setMessageFileExcluded(input: {
+    userId: string;
+    conversationId: string;
+    messageId: string;
+    fileId: string;
+    excluded: boolean;
+    replayAfterMessageId?: string;
+  }): Promise<{
+    messageId: string;
+    fileId: string;
+    excluded: boolean;
+    replayAfterMessageId?: string;
+    attachmentReplay: NonNullable<IMessage['attachmentReplay']>;
+  } | null>;
   saveMessage(
     ctx: {
       userId: string;
@@ -944,6 +959,8 @@ export function createMessageMethods(mongoose: typeof import('mongoose')): Messa
         user: userId,
         messageId: params.newMessageId || params.messageId,
       };
+      // Only setMessageFileExcluded owns replay decisions; stale turn saves cannot replace them.
+      delete update.attachmentReplay;
       delete update.isTemporary;
       delete update.expiredAt;
       let retentionOnInsert: { expiredAt: Date; isTemporary: false } | undefined;
@@ -1127,6 +1144,7 @@ export function createMessageMethods(mongoose: typeof import('mongoose')): Messa
       const Message = mongoose.models.Message as Model<IMessage>;
       const bulkOps = messages.map((message) => {
         const normalizedMessage = { ...message };
+        delete normalizedMessage.attachmentReplay;
         const provenance = capNormalizedProvenance(
           normalizeUserSubmittedPaths(message.userSubmittedPaths),
           normalizeUserSubmittedMessageFieldPaths(message.userSubmittedMessageFieldPaths),
@@ -1187,6 +1205,7 @@ export function createMessageMethods(mongoose: typeof import('mongoose')): Messa
         normalizeUserSubmittedMessageFieldPaths(rest.userSubmittedMessageFieldPaths),
       );
       const {
+        attachmentReplay: _attachmentReplay,
         userSubmittedPaths: _userSubmittedPaths,
         userSubmittedMessageFieldPaths: _userSubmittedMessageFieldPaths,
         ...safeRest
@@ -2065,6 +2084,7 @@ export function createMessageMethods(mongoose: typeof import('mongoose')): Messa
     try {
       const Message = mongoose.models.Message as Model<IMessage>;
       const { messageId, ...update } = message;
+      delete update.attachmentReplay;
       const submittedPaths = normalizeUserSubmittedPaths(update.userSubmittedPaths);
       const submittedMessageFields = normalizeUserSubmittedMessageFieldPaths(
         update.userSubmittedMessageFieldPaths,
@@ -3754,7 +3774,64 @@ export function createMessageMethods(mongoose: typeof import('mongoose')): Messa
     return Message.meiliSearch(query, searchOptions, hydrate);
   }
 
+  async function setMessageFileExcluded(
+    input: Parameters<MessageMethods['setMessageFileExcluded']>[0],
+  ) {
+    const Message = mongoose.models.Message as Model<IMessage>;
+    const message = await Message.findOneAndUpdate(
+      {
+        user: input.userId,
+        conversationId: input.conversationId,
+        messageId: input.messageId,
+        isCreatedByUser: true,
+        'files.file_id': input.fileId,
+        endpoint: { $nin: [EModelEndpoint.assistants, EModelEndpoint.azureAssistants] },
+      },
+      [
+        {
+          $set: {
+            attachmentReplay: {
+              $concatArrays: [
+                {
+                  $filter: {
+                    input: { $ifNull: ['$attachmentReplay', []] },
+                    as: 'decision',
+                    cond: { $ne: ['$$decision.fileId', { $literal: input.fileId }] },
+                  },
+                },
+                {
+                  $literal: [
+                    {
+                      fileId: input.fileId,
+                      excluded: input.excluded,
+                      ...(!input.excluded && input.replayAfterMessageId
+                        ? { replayAfterMessageId: input.replayAfterMessageId }
+                        : {}),
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      ],
+      { new: true, projection: { messageId: 1, attachmentReplay: 1 } },
+    ).lean();
+    return message == null
+      ? null
+      : {
+          messageId: message.messageId,
+          fileId: input.fileId,
+          excluded: input.excluded,
+          attachmentReplay: message.attachmentReplay ?? [],
+          ...(!input.excluded && input.replayAfterMessageId
+            ? { replayAfterMessageId: input.replayAfterMessageId }
+            : {}),
+        };
+  }
+
   return {
+    setMessageFileExcluded,
     saveMessage,
     bulkSaveMessages,
     recordMessage,

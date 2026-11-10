@@ -139,6 +139,7 @@ const {
   assertAgentAttachmentTopology,
   isModelBoundAttachmentFile,
   isAgentAttachmentLimitError,
+  serializeAttachmentRejection,
   isAttachmentObjectNotFoundError,
   buildAgentScopedContext,
   buildAgentScopedAttachmentMap,
@@ -5143,7 +5144,7 @@ class AgentClient extends BaseClient {
         this.modelBoundCurrentFiles = [];
         this.contentParts.push({
           type: ContentTypes.ERROR,
-          [ContentTypes.ERROR]: err.message,
+          [ContentTypes.ERROR]: serializeAttachmentRejection(err),
         });
       } else if (isAgentRunCancellation(err, abortController.signal)) {
         logger.debug(

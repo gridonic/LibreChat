@@ -17,6 +17,8 @@ export type RequestBody = {
   fileTokenLimit?: number;
   conversationId?: string;
   parentMessageId?: string;
+  overrideParentMessageId?: string;
+  responseMessageId?: string;
   endpoint?: string;
   endpointType?: string;
   model?: string;

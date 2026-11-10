@@ -1,7 +1,9 @@
 import mongoose from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 import { MongoMemoryServer } from 'mongodb-memory-server';
+import { prepareAttachmentReplayHistory } from 'librechat-data-provider';
 import { backgroundResultMetadata, Constants, RetentionMode } from 'librechat-data-provider';
+import type { TMessage } from 'librechat-data-provider';
 import type { AppConfig, IMessage } from '..';
 import {
   createMessageMethods,
@@ -5464,5 +5466,84 @@ describe('Message Operations', () => {
         }),
       ).resolves.toEqual({ status: 'not_found' });
     });
+  });
+});
+
+describe('attachment replay persistence lifecycle', () => {
+  it('keeps replay decisions independent of stale generation saves and protects ownership', async () => {
+    const methods = createMessageMethods(mongoose);
+    const messageId = uuidv4();
+    const conversationId = uuidv4();
+    const files = [{ file_id: 'first', filename: 'original.csv' }, { file_id: 'second' }];
+    const original = {
+      messageId,
+      conversationId,
+      text: 'keep',
+      isCreatedByUser: true,
+      endpoint: 'agents',
+      files,
+    };
+    await methods.saveMessage({ userId: 'attachment-owner' }, original);
+    const scope = {
+      userId: 'attachment-owner',
+      conversationId,
+      messageId,
+      fileId: 'first',
+      excluded: true,
+    };
+    for (const invalid of [
+      { userId: 'other-owner' },
+      { conversationId: uuidv4() },
+      { fileId: 'unattached' },
+    ]) {
+      expect(await methods.setMessageFileExcluded({ ...scope, ...invalid })).toBeNull();
+    }
+    await methods.setMessageFileExcluded(scope);
+    // Completion, pause/resume and edits may carry an older full message snapshot.
+    await methods.saveMessage(
+      { userId: 'attachment-owner' },
+      { ...original, attachmentReplay: [] },
+    );
+    await methods.updateMessage('attachment-owner', {
+      messageId,
+      text: 'updated',
+      attachmentReplay: [],
+    });
+    await methods.bulkSaveMessages([
+      { ...original, user: 'attachment-owner', attachmentReplay: [] },
+    ]);
+    await methods.recordMessage({ ...original, user: 'attachment-owner', attachmentReplay: [] });
+    let stored = await Message.findOne({ messageId }).lean();
+    expect(stored?.files).toEqual(files);
+    expect(stored?.attachmentReplay).toEqual([{ fileId: 'first', excluded: true }]);
+    expect(
+      prepareAttachmentReplayHistory([
+        {
+          messageId: stored!.messageId,
+          files: stored!.files as TMessage['files'],
+          attachmentReplay: stored!.attachmentReplay,
+        },
+      ])[0].files,
+    ).toEqual([{ file_id: 'second' }]);
+    await methods.setMessageFileExcluded({
+      ...scope,
+      excluded: false,
+      replayAfterMessageId: 'failure',
+    });
+    stored = await Message.findOne({ messageId }).lean();
+    expect(stored?.attachmentReplay).toEqual([
+      { fileId: 'first', excluded: false, replayAfterMessageId: 'failure' },
+    ]);
+    await methods.setMessageFileExcluded({ ...scope, fileId: 'second' });
+    expect((await Message.findOne({ messageId }).lean())?.attachmentReplay).toHaveLength(2);
+    await Message.updateOne({ messageId }, { $set: { endpoint: 'assistants' } });
+    expect(await methods.setMessageFileExcluded(scope)).toBeNull();
+    await Message.updateOne({ messageId }, { $set: { endpoint: 'agents' } });
+    await methods.setMessageFileExcluded(scope);
+    expect(
+      (await Message.findOne({ messageId }).lean())?.attachmentReplay?.find(
+        (decision) => decision.fileId === 'first',
+      ),
+    ).toEqual({ fileId: 'first', excluded: true });
   });
 });

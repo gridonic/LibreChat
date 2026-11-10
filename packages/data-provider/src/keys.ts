@@ -1,4 +1,5 @@
 export enum QueryKeys {
+  attachmentReplay = 'attachmentReplay',
   messages = 'messages',
   sharedMessages = 'sharedMessages',
   sharedStartupConfig = 'sharedStartupConfig',
@@ -112,6 +113,7 @@ export const DynamicQueryKeys = {
 } as const;
 
 export enum MutationKeys {
+  setMessageFileExcluded = 'setMessageFileExcluded',
   subagentControl = 'subagentControl',
   cancelBackgroundTasks = 'cancelBackgroundTasks',
   enqueueAgentQueuedTurn = 'enqueueAgentQueuedTurn',

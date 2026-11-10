@@ -6,6 +6,7 @@ const EVENT_STREAM_MEDIA_TYPE = 'text/event-stream';
 const HEARTBEAT_TIMEOUT_MS = 15_000;
 
 interface UploadErrorData {
+  error?: string;
   message?: string;
   code?: number;
   temp_file_id?: string;
@@ -23,7 +24,7 @@ class FileUploadError extends Error {
   public file_id: string;
   public tool_resource?: EToolResources;
   public display_to_user: boolean;
-  public response: { data: { message: string } };
+  public response: { data: { message: string; error?: string } };
 
   constructor(
     message: string,
@@ -31,6 +32,7 @@ class FileUploadError extends Error {
     toolResource?: EToolResources,
     displayToUser = false,
     code = 0,
+    errorCode?: string,
   ) {
     super(message);
     this.name = 'CustomAppError';
@@ -38,7 +40,9 @@ class FileUploadError extends Error {
     this.file_id = fileId;
     this.tool_resource = toolResource;
     this.display_to_user = displayToUser;
-    this.response = { data: { message: displayToUser ? message : '' } };
+    this.response = {
+      data: { message: displayToUser ? message : '', ...(errorCode ? { error: errorCode } : {}) },
+    };
   }
 }
 
@@ -70,8 +74,10 @@ const parseEvent = (message: string): ParsedEvent => {
 
 const createHttpError = async (response: Response, formData: FormData) => {
   let message = `Server responded with status: ${response.status}`;
+  let errorCode: string | undefined;
   try {
-    const data = (await response.json()) as { message?: string };
+    const data = (await response.json()) as { message?: string; error?: string };
+    errorCode = data.error;
     message = data.message || message;
   } catch {
     // Preserve the status-based fallback for non-JSON responses.
@@ -83,6 +89,7 @@ const createHttpError = async (response: Response, formData: FormData) => {
     getToolResource(formData),
     true,
     response.status,
+    errorCode,
   );
 };
 
@@ -100,6 +107,7 @@ const createStreamError = (data: string, formData: FormData) => {
     error.tool_resource || getToolResource(formData),
     error.display_to_user ?? false,
     error.code ?? 0,
+    error.error,
   );
 };
 

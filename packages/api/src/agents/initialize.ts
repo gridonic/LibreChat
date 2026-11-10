@@ -14,8 +14,13 @@ import {
   hasActivePiiPatterns,
   replaceSpecialVars,
   providerEndpointMap,
+  prepareAttachmentReplayHistory,
+  selectAttachmentReplayBranch,
+  getReusedAttachmentReplayStates,
+  getAttachmentReplayRequest,
 } from 'librechat-data-provider';
 import type {
+  AttachmentReplayMessage,
   AgentToolResources,
   AgentToolOptions,
   TEndpointOption,
@@ -617,6 +622,8 @@ export type InitializedAgent = Agent & {
   attachments: IMongoFile[];
   /** Message files admitted for this agent, including historical files when resend is enabled. */
   requestAttachments: IMongoFile[];
+  /** Owner-hydrated originals for persistence/display, independently of model admission. */
+  messageFiles?: Array<Pick<TFile, 'file_id' | 'filename' | 'filepath' | 'bytes' | 'type'>>;
   /** Only hydrated attachments from the current request; excludes history and agent setup files. */
   currentRequestAttachments: TFile[];
   /** Files attached to this agent's permanent context via tool_resources. */
@@ -819,6 +826,8 @@ export interface InitializeAgentParams {
   requestBody?: RequestBody;
   /** Request files */
   requestFiles?: IMongoFile[];
+  /** Existing user reference and selected response branch for Regenerate/Continue. */
+  attachmentReplay?: { messageId: string; headMessageId: string };
   /** Host-authorized, hydrated inputs for an isolated execution. Suppresses parent history reads. */
   authorizedRunFiles?: readonly TFile[];
   /** Function to load agent tools */
@@ -986,13 +995,9 @@ export interface InitializeAgentDbMethods extends EndpointDbMethods {
   ) => Promise<unknown[]>;
   /** Get messages for a conversation (supports select for field projection) */
   getMessages?: (
-    filter: { conversationId: string },
+    filter: { conversationId: string; user?: string },
     select?: string,
-  ) => Promise<Array<{
-    messageId: string;
-    parentMessageId?: string;
-    files?: Array<{ file_id: string }>;
-  }> | null>;
+  ) => Promise<Array<AttachmentReplayMessage & { messageId: string }> | null>;
   /** List skill summaries for catalog injection (paginated, omits body/frontmatter) */
   listSkillsByAccess?: TListSkillsByAccess;
   /** Load a single skill by name, constrained to an ACL-accessible ID set. */
@@ -1064,6 +1069,11 @@ export async function initializeAgent(
     allowedProviders,
     isInitialAgent = false,
   } = params;
+  // requestBody may be the restricted MCP placeholder projection, without retry identity.
+  const attachmentReplay =
+    params.attachmentReplay ??
+    getAttachmentReplayRequest(params.req?.body) ??
+    getAttachmentReplayRequest(requestBody);
   const runtime =
     params.runtime ?? (params.req ? createRequestAgentExecutionContext(params.req) : null);
   if (runtime == null) {
@@ -1423,6 +1433,7 @@ export async function initializeAgent(
         .filter((fileId): fileId is string => typeof fileId === 'string' && fileId.length > 0),
     ),
   ];
+  let reusedReplayStates: ReturnType<typeof getReusedAttachmentReplayStates> = {};
   const toolFileIds: string[] = [];
   /** Earlier-turn attachments still awaiting provisioning; provisioning input only. */
   let deferredProvisionFiles: IMongoFile[] = [];
@@ -1472,7 +1483,7 @@ export async function initializeAgent(
   if (
     authorizedRunFiles === undefined &&
     conversationId != null &&
-    (resendFiles || wantsProvisioning)
+    (resendFiles || wantsProvisioning || attachmentReplay != null)
   ) {
     const getThreadMessages = db.getMessages;
     /** Falsy anchors cannot match a parent chain, so they get no walk. */
@@ -1494,10 +1505,15 @@ export async function initializeAgent(
      */
     const [convoFileIds, threadMessages] = await Promise.all([
       readResolvedConversationFiles(runtime, conversationId) ?? db.getConvoFiles(conversationId),
-      needsThreadWalk && getThreadMessages
-        ? getThreadMessages({ conversationId }, 'messageId parentMessageId files attachments')
+      (needsThreadWalk || attachmentReplay != null) && getThreadMessages
+        ? getThreadMessages(
+            { conversationId, user: requestFileOwnerId },
+            'messageId parentMessageId files attachments isCreatedByUser error text content attachmentReplay',
+          )
         : null,
     ]);
+    if (attachmentReplay != null && threadMessages)
+      reusedReplayStates = getReusedAttachmentReplayStates(threadMessages, attachmentReplay);
     const fileIds = convoFileIds ?? [];
 
     /** Walk the parent chain and collect file_ids referenced by
@@ -1508,7 +1524,13 @@ export async function initializeAgent(
      *  this layer. */
     const threadFileIds =
       threadMessages && threadMessages.length > 0
-        ? getThreadData(threadMessages, threadAnchor).fileIds
+        ? getThreadData(
+            prepareAttachmentReplayHistory(
+              selectAttachmentReplayBranch(threadMessages, threadAnchor),
+              { messages: threadMessages, request: attachmentReplay },
+            ),
+            threadAnchor,
+          ).fileIds
         : undefined;
 
     /* Linear continuation APIs supply no anchor: the Responses API always continues via
@@ -1642,6 +1664,10 @@ export async function initializeAgent(
       .map((fileId) => hydratedFilesById.get(fileId))
       .filter((file): file is IMongoFile => file != null);
   }
+  const messageFiles = authorizedRunFiles === undefined ? [...requestUsageFiles] : undefined;
+  requestUsageFiles = requestUsageFiles.filter(
+    (file) => !reusedReplayStates[file.file_id]?.excluded,
+  );
   if (authorizedRunFiles !== undefined) {
     for (const file of authorizedRunFiles) {
       if (
@@ -2529,6 +2555,7 @@ export async function initializeAgent(
     attachments: compatibilityAttachments,
     requestAttachments,
     currentRequestAttachments,
+    messageFiles,
     agentContextAttachments,
     fileConsumers,
     toolContextMap: toolContextMap ?? {},

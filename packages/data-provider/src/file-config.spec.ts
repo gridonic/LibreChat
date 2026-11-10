@@ -2222,3 +2222,9 @@ it('selects web-search routing without changing stored route selection', () => {
     }),
   ).toBe(false);
 });
+
+it('keeps message-file exclusion opt-in and accepts its explicit configuration', () => {
+  expect(mergeFileConfig().allowMessageFileExclusion).toBe(false);
+  expect(mergeFileConfig({ allowMessageFileExclusion: true }).allowMessageFileExclusion).toBe(true);
+  expect(fileConfigSchema.safeParse({ allowMessageFileExclusion: true }).success).toBe(true);
+});

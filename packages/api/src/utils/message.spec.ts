@@ -1,4 +1,4 @@
-import { Constants } from 'librechat-data-provider';
+import { Constants, ContentTypes } from 'librechat-data-provider';
 import {
   sanitizeMessageForTransmit,
   sanitizeFileForTransmit,
@@ -630,4 +630,34 @@ describe('getThreadData', () => {
       expect(endTime - startTime).toBeLessThan(100);
     });
   });
+});
+
+it('persists owner-hydrated original refs independently of model admission', () => {
+  const originals = [
+    { file_id: 'omit', filename: 'original.csv', text: 'private body' },
+    { file_id: 'keep', filename: 'keep.csv', text: 'other body' },
+  ];
+  const admitted = [originals[1]];
+  expect(buildMessageFiles(originals, admitted, originals)).toEqual([
+    { file_id: 'omit', filename: 'original.csv' },
+    { file_id: 'keep', filename: 'keep.csv' },
+  ]);
+  expect(buildMessageFiles(originals, admitted)).toEqual([
+    { file_id: 'keep', filename: 'keep.csv' },
+  ]);
+});
+
+it('collects tool replay references from steers through the shared reference selector', () => {
+  const result = getThreadData(
+    [
+      {
+        messageId: 'response',
+        content: [
+          { type: ContentTypes.STEER, steer: 'read', files: [{ file_id: 'steer-upload' }] },
+        ],
+      },
+    ],
+    'response',
+  );
+  expect(result.fileIds).toEqual(['steer-upload']);
 });

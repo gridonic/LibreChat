@@ -440,6 +440,31 @@ function agentContextAssertionResponses({ messages, text }) {
   };
 }
 
+// Inspect model-facing content only; the assertion directive must not satisfy its own check.
+function attachmentReplayAssertionResponses({ messages, text }) {
+  const assertion = getMarkerValue(text, 'E2E_ASSERT_ATTACHMENT:');
+  const separator = assertion.indexOf(':');
+  const expected = assertion.slice(0, separator);
+  const token = assertion.slice(separator + 1);
+  const promptText = (messages ?? [])
+    .map((message) => getContentText(message.content))
+    .join('\n')
+    .replace(/E2E_ASSERT_ATTACHMENT:[^\n]*/g, '');
+  if (
+    !token ||
+    !['present', 'absent'].includes(expected) ||
+    promptText.includes(token) !== (expected === 'present')
+  ) {
+    throw new Error('E2E attachment replay assertion failed');
+  }
+  return {
+    responses: [
+      'E2E attachment replay assertion passed' +
+        (expected === 'present' ? ' replay-check'.repeat(100) : ''),
+    ],
+  };
+}
+
 /**
  * Answers whether a token from an EARLIER turn still reaches the model. Scans
  * every prompt message except the current user turn: the marker line carries
@@ -3154,6 +3179,15 @@ function resolveResponses({ graph, messages, text, toolNames }) {
       responses: [MOCK_REPLY],
       resolveOnStream: (streamMessages) =>
         agentContextAssertionResponses({ messages: streamMessages, text }),
+    };
+  }
+
+  if (text.includes('E2E_ASSERT_ATTACHMENT:')) {
+    return {
+      responses: [MOCK_REPLY],
+      sleep: 25,
+      resolveOnStream: (streamMessages) =>
+        attachmentReplayAssertionResponses({ messages: streamMessages, text }),
     };
   }
 

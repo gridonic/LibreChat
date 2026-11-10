@@ -9,7 +9,9 @@ import {
   getStableMessages,
   shouldPreserveMessagesOnNotFound,
   useGetMessagesByConvoId,
+  useMessageAttachmentReplay,
 } from '../queries';
+import { useSetMessageFileExcluded } from '../mutations';
 import { clearMessagesCache, logger } from '~/utils';
 
 jest.mock('librechat-data-provider', () => {
@@ -19,6 +21,7 @@ jest.mock('librechat-data-provider', () => {
     dataService: {
       ...actual.dataService,
       getMessagesByConvoId: jest.fn(),
+      setMessageFileExcluded: jest.fn(),
     },
   };
 });
@@ -632,5 +635,65 @@ describe('useGetMessagesByConvoId', () => {
     );
 
     unmount();
+  });
+});
+
+describe('replay policy cache ownership', () => {
+  it('keeps the acknowledged server policy when streaming replaces message objects', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const original = message({ files: [{ file_id: 'file' }, { file_id: 'other' }] });
+    const key = [QueryKeys.messages, original.conversationId];
+    queryClient.setQueryData(key, [original]);
+    const { result, unmount } = renderHook(
+      () => ({
+        replay: useMessageAttachmentReplay(original),
+        mutation: useSetMessageFileExcluded(),
+      }),
+      { wrapper: createWrapper(queryClient, '/c/convo-id') },
+    );
+    (dataService.setMessageFileExcluded as jest.Mock).mockResolvedValue({
+      messageId: original.messageId,
+      fileId: 'file',
+      excluded: true,
+      attachmentReplay: [
+        { fileId: 'file', excluded: true },
+        { fileId: 'other', excluded: true },
+      ],
+    });
+    await act(async () => {
+      await result.current.mutation.mutateAsync({
+        conversationId: 'convo-id',
+        messageId: original.messageId,
+        fileId: 'file',
+        excluded: true,
+      });
+    });
+    // The stream/final event predates the policy mutation and carries no policy field.
+    act(() => queryClient.setQueryData(key, [{ ...original, tokenCount: 123 }]));
+    await waitFor(() =>
+      expect(result.current.replay?.file).toMatchObject({ excluded: true, reason: 'manual' }),
+    );
+    expect(result.current.replay?.other.excluded).toBe(true);
+    expect(queryClient.getQueryData<TMessage[]>(key)?.[0].files).toEqual(original.files);
+    (dataService.setMessageFileExcluded as jest.Mock).mockResolvedValue({
+      messageId: original.messageId,
+      fileId: 'file',
+      excluded: false,
+      attachmentReplay: [
+        { fileId: 'file', excluded: false },
+        { fileId: 'other', excluded: true },
+      ],
+    });
+    await act(async () => {
+      await result.current.mutation.mutateAsync({
+        conversationId: 'convo-id',
+        messageId: original.messageId,
+        fileId: 'file',
+        excluded: false,
+      });
+    });
+    await waitFor(() => expect(result.current.replay?.file.excluded).toBe(false));
+    unmount();
+    queryClient.clear();
   });
 });

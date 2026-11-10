@@ -892,6 +892,15 @@ const agentFadingTierSchema = z.object({
 });
 
 export const tMessageSchema = z.object({
+  attachmentReplay: z
+    .array(
+      z.object({
+        fileId: z.string(),
+        excluded: z.boolean(),
+        replayAfterMessageId: z.string().optional(),
+      }),
+    )
+    .optional(),
   messageId: z.string(),
   endpoint: z.string().optional(),
   clientId: z.string().nullable().optional(),
