@@ -24,6 +24,7 @@ export type AttachmentReplayState = {
   reason?: 'manual' | 'rejected';
   rejectionMessageId?: string;
 };
+type AttachmentReplayRequest = { messageId: string; headMessageId: string };
 
 /** Replay policy belongs to the message, independently of canonical file display metadata. */
 export function getMessageAttachmentRefs(
@@ -41,7 +42,7 @@ export function getMessageAttachmentRefs(
 export function getAttachmentReplayRequest(body?: {
   overrideParentMessageId?: unknown;
   responseMessageId?: unknown;
-}) {
+}): AttachmentReplayRequest | undefined {
   if (typeof body?.overrideParentMessageId !== 'string' || !body.overrideParentMessageId)
     return undefined;
   return {
@@ -55,13 +56,19 @@ export function getAttachmentReplayRequest(body?: {
 
 export function getReusedAttachmentReplayStates(
   messages: AttachmentReplayMessage[],
-  request: { messageId: string; headMessageId: string },
+  request: AttachmentReplayRequest,
+) {
+  return getAttachmentReplayStates(selectRequestBranch(messages, request))[request.messageId] ?? {};
+}
+
+function selectRequestBranch(
+  messages: readonly AttachmentReplayMessage[],
+  request: AttachmentReplayRequest,
 ) {
   const selected = selectAttachmentReplayBranch(messages, request.headMessageId);
-  const branch = selected.some((message) => message.messageId === request.messageId)
+  return selected.some((message) => message.messageId === request.messageId)
     ? selected
     : selectAttachmentReplayBranch(messages, request.messageId);
-  return getAttachmentReplayStates(branch)[request.messageId] ?? {};
 }
 export type AttachmentReplayStates = Record<string, Record<string, AttachmentReplayState>>;
 
@@ -197,8 +204,18 @@ export function getAttachmentReplayStates(
 }
 
 /** Model-only projection. Never overwrite stored messages or delete uploaded files. */
-export function prepareAttachmentReplayHistory<T extends Partial<TMessage>>(messages: T[]): T[] {
-  const states = getAttachmentReplayStates(messages);
+export function prepareAttachmentReplayHistory<T extends Partial<TMessage>>(
+  messages: T[],
+  context?: {
+    messages: readonly AttachmentReplayMessage[];
+    request: AttachmentReplayRequest | undefined;
+  },
+): T[] {
+  // Regenerate history ends before the user turn; its selected failure still governs replay.
+  const policyMessages = context?.request
+    ? selectRequestBranch(context.messages, context.request)
+    : messages;
+  const states = getAttachmentReplayStates(policyMessages);
   return messages.map((message) => {
     const fileStates = states[message.messageId ?? ''];
     if (!fileStates || !Object.values(fileStates).some((state) => state.excluded)) return message;

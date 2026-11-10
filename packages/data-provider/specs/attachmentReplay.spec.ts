@@ -96,6 +96,25 @@ describe('attachment retry scope', () => {
     ),
     messageId: id,
   });
+  it('applies the selected retry branch to earlier history without admitting sibling rejections', () => {
+    const upload = user('upload');
+    const answer = { messageId: 'answer', parentMessageId: 'upload', isCreatedByUser: false };
+    const question = { ...user('question', []), parentMessageId: 'answer' };
+    const stored = [upload, answer, question, rejected('failure', 'question', ['large'])];
+    const request = { messageId: 'question', headMessageId: 'failure' };
+    const history = [upload, answer];
+    expect(prepareAttachmentReplayHistory(history, { messages: stored, request })[0].files).toEqual(
+      [],
+    );
+    expect(
+      prepareAttachmentReplayHistory(history, {
+        messages: stored,
+        request: { ...request, headMessageId: 'answer' },
+      })[0].files,
+    ).toHaveLength(1);
+    expect(prepareAttachmentReplayHistory(history)[0].files).toHaveLength(1);
+    expect(upload.files).toHaveLength(1);
+  });
   it('acknowledges only one rejection, then recovers after a failed retry with no new files', () => {
     const stored = [
       user('upload', [

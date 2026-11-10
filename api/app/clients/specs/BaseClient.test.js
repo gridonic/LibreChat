@@ -266,6 +266,50 @@ describe('BaseClient', () => {
   });
 
   describe('loadHistory', () => {
+    it('keeps the selected retry rejection when model history stops before the failed turn', async () => {
+      const rows = [
+        {
+          messageId: 'upload',
+          parentMessageId: Constants.NO_PARENT,
+          isCreatedByUser: true,
+          files: [{ file_id: 'rejected-history' }],
+        },
+        { messageId: 'answer', parentMessageId: 'upload', isCreatedByUser: false, text: 'OK' },
+        {
+          messageId: 'question',
+          parentMessageId: 'answer',
+          isCreatedByUser: true,
+          text: 'Read it',
+        },
+        {
+          messageId: 'failure',
+          parentMessageId: 'question',
+          isCreatedByUser: false,
+          error: true,
+          text: JSON.stringify({
+            code: 'AGENT_ATTACHMENT_LIMIT_EXCEEDED',
+            rejectedFileIds: ['rejected-history'],
+          }),
+        },
+      ];
+      getMessages.mockResolvedValueOnce(rows);
+      const addPreviousAttachments = jest.fn(async (messages) => messages);
+      const receiver = Object.assign(Object.create(BaseClientClass.prototype), {
+        user: 'owner',
+        constructor: BaseClientClass,
+        options: {
+          req: {
+            body: { overrideParentMessageId: 'question', responseMessageId: 'failure_' },
+          },
+        },
+        addPreviousAttachments,
+      });
+      const history = await receiver.loadHistory('convo-1', 'answer');
+      expect(history.map((message) => message.messageId)).toEqual(['upload', 'answer']);
+      expect(history[0].files).toEqual([]);
+      expect(rows[0].files).toEqual([{ file_id: 'rejected-history' }]);
+    });
+
     it.each([false, true])(
       'recovers before hydrating history, including a failed explicit retry (%s)',
       async (retried) => {

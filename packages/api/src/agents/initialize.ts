@@ -1527,6 +1527,7 @@ export async function initializeAgent(
         ? getThreadData(
             prepareAttachmentReplayHistory(
               selectAttachmentReplayBranch(threadMessages, threadAnchor),
+              { messages: threadMessages, request: attachmentReplay },
             ),
             threadAnchor,
           ).fileIds

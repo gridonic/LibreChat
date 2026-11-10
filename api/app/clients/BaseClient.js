@@ -47,6 +47,7 @@ const {
   HITL_MESSAGE_FILTER_FIELDS,
   stripReasoningLabelMetadata,
   prepareAttachmentReplayHistory,
+  getAttachmentReplayRequest,
   resolveTurnLLMDeliveryPath,
   resolveUseResponsesApi,
 } = require('librechat-data-provider');
@@ -1326,7 +1327,12 @@ class BaseClient {
       }
     }
 
-    return this.addPreviousAttachments(prepareAttachmentReplayHistory(_messages));
+    return this.addPreviousAttachments(
+      prepareAttachmentReplayHistory(_messages, {
+        messages,
+        request: getAttachmentReplayRequest(this.options?.req?.body),
+      }),
+    );
   }
 
   /**

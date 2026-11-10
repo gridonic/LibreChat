@@ -131,55 +131,78 @@ test('attachment decisions survive generation, regenerate, continue and steer re
       messages.find((message) => message.messageId === user.messageId)?.attachmentReplay?.[0]
         ?.excluded,
     ).toBe(true);
-    // Persist the representation produced by a mid-run steer and a subsequent size rejection.
-    await withMongo(async (db) => {
-      const parent = await db
-        .collection('messages')
-        .findOne({ conversationId, messageId: response.messageId });
-      const base = {
-        conversationId,
-        user: parent!.user,
-        endpoint: parent!.endpoint,
-        model: parent!.model,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-      const steerId = randomUUID();
-      const nextId = randomUUID();
-      await db.collection('messages').insertMany([
-        {
-          ...base,
-          messageId: steerId,
-          parentMessageId: response.messageId,
-          isCreatedByUser: false,
-          text: '',
-          content: [{ type: 'steer', steer: 'read this', files: [{ file_id: file!.file_id }] }],
-        },
-        {
-          ...base,
-          messageId: nextId,
-          parentMessageId: steerId,
-          isCreatedByUser: true,
-          text: 'continue',
-        },
-        {
-          ...base,
-          messageId: randomUUID(),
-          parentMessageId: nextId,
-          isCreatedByUser: false,
-          error: true,
-          text: JSON.stringify({
-            code: 'AGENT_ATTACHMENT_LIMIT_EXCEEDED',
-            rejectedFileIds: [file!.file_id],
-          }),
-        },
-      ]);
-    });
-    await page.reload();
-    await sendMessageAndWaitForCompletion(page, assertion('absent'));
-    await expect(
-      page.getByText('E2E attachment replay assertion passed', { exact: true }).last(),
-    ).toBeVisible();
+    // Both a new turn and Regenerate must use the rejection beyond the prompt's history anchor.
+    for (const regenerate of [false, true]) {
+      response = (await readMessages()).filter((message) => !message.isCreatedByUser).at(-1)!;
+      let rejectedQuestionId: string | undefined;
+      await withMongo(async (db) => {
+        const parent = await db
+          .collection('messages')
+          .findOne({ conversationId, messageId: response.messageId });
+        const base = {
+          conversationId,
+          user: parent!.user,
+          endpoint: parent!.endpoint,
+          model: parent!.model,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        const steerId = randomUUID();
+        const nextId = randomUUID();
+        rejectedQuestionId = nextId;
+        await db.collection('messages').insertMany([
+          {
+            ...base,
+            messageId: steerId,
+            parentMessageId: response.messageId,
+            isCreatedByUser: false,
+            text: '',
+            content: [{ type: 'steer', steer: 'read this', files: [{ file_id: file!.file_id }] }],
+          },
+          {
+            ...base,
+            messageId: nextId,
+            parentMessageId: steerId,
+            isCreatedByUser: true,
+            text: assertion('absent'),
+          },
+          {
+            ...base,
+            messageId: randomUUID(),
+            parentMessageId: nextId,
+            isCreatedByUser: false,
+            error: true,
+            text: JSON.stringify({
+              code: 'AGENT_ATTACHMENT_LIMIT_EXCEEDED',
+              rejectedFileIds: [file!.file_id],
+            }),
+          },
+        ]);
+      });
+      await page.reload();
+      if (regenerate) {
+        await Promise.all([
+          page.waitForResponse(isAgentGenerationStart),
+          page.getByRole('button', { name: 'Regenerate', exact: true }).last().click(),
+        ]);
+        await expect
+          .poll(async () =>
+            (await readMessages()).some(
+              (message) =>
+                message.parentMessageId === rejectedQuestionId &&
+                !message.error &&
+                !message.unfinished &&
+                JSON.stringify(message).includes('E2E attachment replay assertion passed'),
+            ),
+          )
+          .toBe(true);
+      } else {
+        await sendMessageAndWaitForCompletion(page, assertion('absent'));
+      }
+      await expect(
+        page.getByText('E2E attachment replay assertion passed', { exact: true }).last(),
+      ).toBeVisible();
+    }
   } finally {
     if (conversationId) {
       await deleteMessagesByConversation([conversationId]);

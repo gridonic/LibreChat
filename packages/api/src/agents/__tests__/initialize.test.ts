@@ -3733,10 +3733,17 @@ describe('initializeAgent — code-generated file thread filter (regression)', (
     });
   });
 
-  it.each(['manual', 'rejected', 'retry-rejected'])(
-    'filters %s files before code and search tool hydration on the next turn',
-    async (reason) => {
+  it.each([
+    { reason: 'manual', regenerate: false },
+    { reason: 'rejected', regenerate: false },
+    { reason: 'retry-rejected', regenerate: false },
+    { reason: 'retry-rejected', regenerate: true },
+  ])(
+    'filters $reason files before code and search tool hydration (regenerate=$regenerate)',
+    async ({ reason, regenerate }) => {
       const { agent, req, res, loadTools, db } = setupExecuteCodeAgent();
+      if (regenerate)
+        req.body = { overrideParentMessageId: 'retry', responseMessageId: 'new-error_' };
       agent.tools = ['execute_code', Tools.file_search];
       mockGetThreadData.mockImplementationOnce(realUtils.getThreadData);
       const rejectedFile = {
@@ -3794,7 +3801,7 @@ describe('initializeAgent — code-generated file thread filter (regression)', (
           loadTools,
           endpointOption: { endpoint: EModelEndpoint.agents },
           conversationId: 'conv-1',
-          parentMessageId: 'new-error',
+          parentMessageId: regenerate ? 'old-error' : 'new-error',
           allowedProviders: new Set([Providers.OPENAI]),
           isInitialAgent: true,
           codeEnvAvailable: true,
