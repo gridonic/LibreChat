@@ -225,6 +225,7 @@ export type GitHubSkillSyncDeps = {
     user?: Types.ObjectId | string;
     tenantId?: string;
   }) => Promise<void>;
+  reconcileSkillSyncSharing?: (params: { skillId: string; groups: string[] }) => Promise<void>;
   grantPermission: (params: {
     principalType: string;
     principalId: string | Types.ObjectId | null;
@@ -785,7 +786,16 @@ async function ensureSourceSharing(
   skillId: Types.ObjectId,
   source: SkillSyncGitHubSourceConfig,
   isNew = false,
+  skillPath = '',
 ): Promise<void> {
+  const rule = source.sharingRules?.find((entry) =>
+    entry.paths.some((root) => skillPath === root || skillPath.startsWith(`${root}/`)),
+  );
+  if (rule) {
+    if (!deps.reconcileSkillSyncSharing)
+      throw new SkillSyncError('SKILL_SHARING_UNAVAILABLE', 'Configured sharing unavailable');
+    await deps.reconcileSkillSyncSharing({ skillId: String(skillId), groups: rule.groups });
+  }
   const publicSharing = source.sharePublicly !== false;
   // Bootstrap administrator discovery only for new/recreated restricted mirrors.
   // Existing ACLs belong to administrators, including removal of this grant.
@@ -1114,7 +1124,13 @@ async function restoreDeletedSyncedSkill(
       skillId: restored.skill._id,
     });
   }
-  await ensureSourceSharing(deps, restored.skill._id, source, true);
+  await ensureSourceSharing(
+    deps,
+    restored.skill._id,
+    source,
+    true,
+    String(restored.skill.sourceMetadata?.skillPath ?? ''),
+  );
 }
 
 async function cleanupDeletedSyncedSkillFiles(
@@ -1756,7 +1772,8 @@ async function syncSource(params: {
             `Skill "${effectivePrepared.existing.name}" was modified during sync`,
           );
         }
-        await ensureSourceSharing(deps, effectivePrepared.existing._id, source);
+        if (!source.sharingRules)
+          await ensureSourceSharing(deps, effectivePrepared.existing._id, source);
         const previousFiles = await deps.listSkillFiles(effectivePrepared.existing._id);
         const journal: SyncSkillFilesJournal = { staleFiles: [], savedFiles: [] };
         let fileCounts: SyncSkillFilesResult;
@@ -1837,6 +1854,15 @@ async function syncSource(params: {
         if (staleConflictCleanup?.deletedSkill) {
           await cleanupDeletedSyncedSkillFiles(deps, staleConflictCleanup.deletedSkill);
         }
+        if (source.sharingRules) {
+          await ensureSourceSharing(
+            deps,
+            effectivePrepared.existing._id,
+            source,
+            false,
+            discovered.rootPath,
+          );
+        }
         counts.syncedSkillCount++;
         counts.syncedFileCount += fileCounts.syncedFileCount;
         counts.deletedFileCount += fileCounts.deletedFileCount;
@@ -1856,7 +1882,7 @@ async function syncSource(params: {
           discovered,
           assertNotCancelled,
         });
-        await ensureSourceSharing(deps, skill._id, source, upserted.created);
+        await ensureSourceSharing(deps, skill._id, source, upserted.created, discovered.rootPath);
         logSkillWarnings(skill.name, upserted.warnings);
         counts.syncedSkillCount++;
         counts.syncedFileCount += fileCounts.syncedFileCount;

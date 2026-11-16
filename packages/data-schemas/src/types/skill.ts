@@ -7,6 +7,8 @@ import type { Document, Types } from 'mongoose';
  * The `version` field is an integer monotonic counter used for optimistic concurrency.
  */
 export interface ISkill {
+  /** Group grants owned by configured native sync sharing rules. */
+  syncSharingGroupIds?: string[];
   /**
    * Machine-readable kebab-case identifier. This is what Claude sees in the
    * system-prompt skill manifest and what slash-command integrations key off.

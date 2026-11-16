@@ -197,6 +197,7 @@ const skillSchema: Schema<ISkillDocument> = new Schema(
     sourceMetadata: {
       type: Schema.Types.Mixed,
     },
+    syncSharingGroupIds: { type: [String], default: undefined },
     fileCount: {
       type: Number,
       default: 0,

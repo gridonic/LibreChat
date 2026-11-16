@@ -96,6 +96,7 @@ function createRunner({ getConfig, loadAppConfig, allowServerCredentials = true 
     upsertSkillFile: db.upsertSkillFile,
     deleteSkillFile: db.deleteSkillFile,
     deleteSkill: db.deleteSkill,
+    reconcileSkillSyncSharing: db.reconcileSkillSyncSharing,
     grantPermission: async ({
       principalType,
       principalId,

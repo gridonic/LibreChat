@@ -139,6 +139,20 @@ cache: true
 #         # Deploy to all sync workers before revoking PUBLIC access. Older
 #         # workers, or reverting to true, will restore public access on sync.
 #         sharePublicly: false
+#         # Optional folder audiences, applied by native sync on every run.
+#         # Paths match folders and descendants; rules must not overlap.
+#         # Groups are exact existing local group names in this source's tenant.
+#         # Unmatched folders retain manual sharing. No groups are inferred.
+#         sharingRules:
+#           - paths: [skills/internal, skills/code]
+#             groups: [employees]
+#           - paths: [skills/shared]
+#             groups: [client-a, client-b]
+#         # Sync owns the configured group grants and replaces them when groups
+#         # change, preserving unrelated manual users/groups. PUBLIC is removed
+#         # on matched skills. groups: [] revokes sync-owned grants. Removing a
+#         # rule hands its folders back to manual sharing without revocation.
+#         # Missing/ambiguous groups fail sharing; sync never creates groups.
 #         # Optional. Owns the mirrored skills under the given tenant so they are
 #         # created and shared within that tenant. Required for visibility when
 #         # tenant isolation is enabled. Omit for single-tenant deployments.
