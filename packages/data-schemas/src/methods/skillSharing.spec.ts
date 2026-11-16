@@ -3,6 +3,7 @@ import { MongoMemoryServer } from 'mongodb-memory-server';
 import { PrincipalType, ResourceType, PermissionBits } from 'librechat-data-provider';
 import type { AllMethods } from './index';
 import { createSkillSharingMethods } from './skillSharing';
+import { tenantStorage } from '~/config/tenantContext';
 import { createModels } from '../models';
 import { createMethods } from './index';
 
@@ -75,4 +76,20 @@ it('does not resolve a same-named group from another tenant', async () => {
     db.reconcileSkillSyncSharing({ skillId: String(skill._id), groups: ['foreign-only'] }),
   ).rejects.toThrow('missing or ambiguous');
   expect(await db.findEntriesByResource(ResourceType.SKILL, skill._id)).toEqual([]);
+});
+
+it('resolves the global viewer role while executing inside a source tenant', async () => {
+  await tenantStorage.run({ tenantId: 'sharing-source-tenant' }, async () => {
+    const group = await db.createGroup({ name: 'tenant-readers', source: 'local' });
+    const skill = await imported('scoped-sharing');
+    await db.reconcileSkillSyncSharing({ skillId: String(skill._id), groups: ['tenant-readers'] });
+    expect(
+      await db.hasPermission(
+        [{ principalType: PrincipalType.GROUP, principalId: group._id }],
+        ResourceType.SKILL,
+        skill._id,
+        PermissionBits.VIEW,
+      ),
+    ).toBe(true);
+  });
 });
