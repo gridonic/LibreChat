@@ -687,8 +687,58 @@ export const skillSyncGitHubSourceSchema = z
     tenantId: skillSyncTenantIdSchema.optional(),
     /** Omit or set true to ensure public viewer access; false leaves sharing to admins. */
     sharePublicly: z.boolean().optional(),
+    /** Folder audiences; unmatched skills retain administrator-managed sharing. */
+    sharingRules: z
+      .array(
+        z
+          .object({
+            paths: z
+              .array(
+                skillSyncPathSchema.refine((root) => root.length > 0, {
+                  message: 'Sharing paths must name a folder',
+                }),
+              )
+              .min(1),
+            groups: z
+              .array(z.string().trim().min(1))
+              .refine((groups) => new Set(groups).size === groups.length, {
+                message: 'Group names must be unique within a sharing rule',
+              }),
+          })
+          .strict(),
+      )
+      .optional(),
   })
   .superRefine((source, ctx) => {
+    if (source.sharingRules !== undefined) {
+      if (source.sharePublicly !== false) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['sharingRules'],
+          message: 'Sharing rules require sharePublicly: false',
+        });
+      }
+      const roots = source.sharingRules.flatMap((rule) => rule.paths);
+      for (let i = 0; i < roots.length; i++) {
+        if (
+          roots
+            .slice(i + 1)
+            .some(
+              (other) =>
+                other === roots[i] ||
+                other.startsWith(`${roots[i]}/`) ||
+                roots[i].startsWith(`${other}/`),
+            )
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['sharingRules'],
+            message: 'Sharing rule paths must not overlap',
+          });
+          break;
+        }
+      }
+    }
     if (!source.credentialKey && !source.token) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

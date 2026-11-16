@@ -248,6 +248,7 @@ export type GitHubSkillSyncDeps = SkillUploadIntentDeps & {
     user?: Types.ObjectId | string;
     tenantId?: string;
   }) => Promise<void>;
+  reconcileSkillSyncSharing?: (params: { skillId: string; groups: string[] }) => Promise<void>;
   grantPermission: (params: {
     principalType: string;
     principalId: string | Types.ObjectId | null;
@@ -796,7 +797,16 @@ async function ensureSourceSharing(
   skillId: Types.ObjectId,
   source: SkillSyncGitHubSourceConfig,
   isNew = false,
+  skillPath = '',
 ): Promise<void> {
+  const rule = source.sharingRules?.find((entry) =>
+    entry.paths.some((root) => skillPath === root || skillPath.startsWith(`${root}/`)),
+  );
+  if (rule) {
+    if (!deps.reconcileSkillSyncSharing)
+      throw new SkillSyncError('SKILL_SHARING_UNAVAILABLE', 'Configured sharing unavailable');
+    await deps.reconcileSkillSyncSharing({ skillId: String(skillId), groups: rule.groups });
+  }
   const publicSharing = source.sharePublicly !== false;
   // Bootstrap administrator discovery only for new/recreated restricted mirrors.
   // Existing ACLs belong to administrators, including removal of this grant.
@@ -1886,7 +1896,7 @@ async function syncSource(params: {
       discovered: DiscoveredSkill,
       prepared: PreparedExistingRemoteSkill,
     ): Promise<void> => {
-      await ensureSourceSharing(deps, prepared.existing._id, source);
+      await ensureSourceSharing(deps, prepared.existing._id, source, false, discovered.rootPath);
       if (canReconcileStaleSkills) {
         const staleConflictCleanup = await deleteNameConflictingStaleSkill({
           deps,
@@ -1949,7 +1959,8 @@ async function syncSource(params: {
             `Skill "${effectivePrepared.existing.name}" was modified during sync`,
           );
         }
-        await ensureSourceSharing(deps, effectivePrepared.existing._id, source);
+        if (!source.sharingRules)
+          await ensureSourceSharing(deps, effectivePrepared.existing._id, source);
         const previousFiles = await deps.listSkillFiles(effectivePrepared.existing._id);
         const cleanupHoldOwner = crypto.randomUUID();
         const journal: SyncSkillFilesJournal = {
@@ -2034,6 +2045,15 @@ async function syncSource(params: {
           const released = await deps.finishSkillUploadCleanupHold(fileId, cleanupHoldOwner, true);
           if (!released) throw new Error(`Skill cleanup hold was lost for ${fileId}`);
         }
+        if (source.sharingRules) {
+          await ensureSourceSharing(
+            deps,
+            effectivePrepared.existing._id,
+            source,
+            false,
+            discovered.rootPath,
+          );
+        }
         counts.syncedSkillCount++;
         counts.syncedFileCount += fileCounts.syncedFileCount;
         counts.deletedFileCount += fileCounts.deletedFileCount;
@@ -2053,7 +2073,7 @@ async function syncSource(params: {
           discovered,
           assertNotCancelled,
         });
-        await ensureSourceSharing(deps, skill._id, source, upserted.created);
+        await ensureSourceSharing(deps, skill._id, source, upserted.created, discovered.rootPath);
         logSkillWarnings(skill.name, upserted.warnings);
         counts.syncedSkillCount++;
         counts.syncedFileCount += fileCounts.syncedFileCount;

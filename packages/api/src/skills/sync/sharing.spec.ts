@@ -12,6 +12,7 @@ import {
   SystemRoles,
   AccessRoleIds,
 } from 'librechat-data-provider';
+import type { SkillSyncGitHubSourceConfig } from 'librechat-data-provider';
 import type { AllMethods } from '@librechat/data-schemas';
 import type { Response } from 'express';
 import type { GitRepoAdapter } from './adapters/types';
@@ -298,4 +299,172 @@ it('preserves group sharing across content updates, no-op syncs and revocation',
   expect((await runner.runOnce()).status).toBe('completed');
   expect(await catalogue(adminId, SystemRoles.ADMIN)).not.toContain(importedId);
   expect(await catalogue(clientId, SystemRoles.USER)).toContain(importedId);
+});
+
+it('applies configured folder audiences during native sync and updates only owned group grants', async () => {
+  const employeeId = new Types.ObjectId().toString();
+  const clientId = new Types.ObjectId().toString();
+  const otherId = new Types.ObjectId().toString();
+  const employees = await db.createGroup({
+    name: 'rule-employees',
+    source: 'local',
+    memberIds: [employeeId],
+  });
+  const clients = await db.createGroup({
+    name: 'rule-clients',
+    source: 'local',
+    memberIds: [clientId],
+  });
+  const outsiders = await db.createGroup({
+    name: 'rule-outsiders',
+    source: 'local',
+    memberIds: [otherId],
+  });
+  const unrelated = await db.createGroup({
+    name: 'manual-reviewers',
+    source: 'local',
+    memberIds: [],
+  });
+  const roots = [
+    'packages/engineering/research',
+    'packages/reusable/audit',
+    'packages/custom/acme/deck',
+  ];
+  let body = 'Initial body';
+  const adapter: GitRepoAdapter = {
+    resolveCommit: async () => ({ id: 'commit', treeId: 'tree' }),
+    fetchTreeEntries: async () =>
+      roots.map((root) => ({
+        path: `${root}/SKILL.md`,
+        type: 'blob',
+        id: `${root}-${body}`,
+        size: 128,
+      })),
+    fetchFileContent: async (_commit, entry) => {
+      const segments = entry.path.split('/');
+      const name = segments[segments.length - 2];
+      return Buffer.from(
+        `---\nname: ${name}\ndescription: Configured audience fixture\n---\n${body}`,
+      );
+    },
+  };
+  const source: SkillSyncGitHubSourceConfig = {
+    id: 'rule-test',
+    owner: 'example',
+    repo: 'packages',
+    ref: 'main',
+    paths: ['packages'],
+    skillDiscoveryDepth: 4,
+    credentialKey: 'test',
+    sharePublicly: false,
+    sharingRules: [
+      { paths: ['packages/engineering'], groups: ['rule-employees'] },
+      { paths: ['packages/reusable'], groups: ['rule-clients'] },
+    ],
+  };
+  const runner = createGitHubSkillSyncRunner({
+    ...db,
+    deleteFile: undefined,
+    getConfig: () => ({
+      github: { enabled: true, intervalMinutes: 60, runOnStartup: false, sources: [source] },
+    }),
+    getCredentialToken: async () => 'synthetic-token',
+    getCredentialSummary: db.getSkillSyncCredentialSummary,
+    listCredentials: db.listSkillSyncCredentials,
+    listStatuses: db.listSkillSyncStatuses,
+    upsertStatus: db.upsertSkillSyncStatus,
+    tryAcquireLock: db.tryAcquireSkillSyncLock,
+    refreshLock: db.refreshSkillSyncLock,
+    releaseLock: db.releaseSkillSyncLock,
+    createAdapter: () => adapter,
+    saveBuffer: async () => {
+      throw new Error('No bundled files');
+    },
+    grantPermission: ({ principalType, principalId, resourceType, resourceId, grantedBy }) =>
+      db.grantPermission(
+        principalType,
+        principalId,
+        resourceType,
+        resourceId,
+        PermissionBits.VIEW,
+        grantedBy,
+      ),
+  });
+  async function run() {
+    const result = await runner.runOnce();
+    expect(
+      result.sources.map((status) => ({ status: status.status, error: status.errorCode })),
+    ).toEqual([{ status: 'succeeded', error: undefined }]);
+  }
+  await run();
+  const skill = async (root: string) => {
+    const result = await db.findSkillBySourceIdentity({
+      source: 'github',
+      upstreamId: `rule-test:${root}`,
+    });
+    if (!result) throw new Error('Missing fixture skill');
+    return result;
+  };
+  const internal = await skill(roots[0]);
+  const shared = await skill(roots[1]);
+  const customer = await skill(roots[2]);
+  const access = new AccessControlService(mongoose, db);
+  const canView = (userId: string, id: Types.ObjectId) =>
+    access.checkPermission({
+      userId,
+      role: SystemRoles.USER,
+      resourceType: ResourceType.SKILL,
+      resourceId: id.toString(),
+      requiredPermission: PermissionBits.VIEW,
+    });
+  expect(await canView(employeeId, internal._id)).toBe(true);
+  expect(await canView(clientId, internal._id)).toBe(false);
+  expect(await canView(clientId, shared._id)).toBe(true);
+  expect(await canView(otherId, shared._id)).toBe(false);
+  expect(await canView(clientId, customer._id)).toBe(false);
+  await db.grantPermission(
+    PrincipalType.GROUP,
+    clients._id,
+    ResourceType.SKILL,
+    customer._id,
+    PermissionBits.VIEW,
+  );
+  await db.grantPermission(
+    PrincipalType.GROUP,
+    unrelated._id,
+    ResourceType.SKILL,
+    shared._id,
+    PermissionBits.VIEW,
+  );
+  const customerAcl = await db.findEntriesByResource(ResourceType.SKILL, customer._id);
+  source.sharingRules![1].groups = ['rule-outsiders'];
+  body = 'Updated body';
+  await run();
+  expect(await canView(clientId, shared._id)).toBe(false);
+  expect(await canView(otherId, shared._id)).toBe(true);
+  expect(await canView(clientId, customer._id)).toBe(true);
+  expect(await db.findEntriesByResource(ResourceType.SKILL, customer._id)).toEqual(customerAcl);
+  expect(
+    await db.hasPermission(
+      [{ principalType: PrincipalType.GROUP, principalId: unrelated._id }],
+      ResourceType.SKILL,
+      shared._id,
+      PermissionBits.VIEW,
+    ),
+  ).toBe(true);
+  const aclBefore = await db.findEntriesByResource(ResourceType.SKILL, shared._id);
+  const versionBefore = (await db.getSkillById(shared._id))?.version;
+  await run();
+  expect(await db.findEntriesByResource(ResourceType.SKILL, shared._id)).toEqual(aclBefore);
+  expect((await db.getSkillById(shared._id))?.version).toBe(versionBefore);
+  source.sharingRules![1].groups = ['missing-group'];
+  const failed = await runner.runOnce();
+  expect(failed.sources[0].status).not.toBe('succeeded');
+  expect(await db.findEntriesByResource(ResourceType.SKILL, shared._id)).toEqual(aclBefore);
+  source.sharingRules![1].groups = [];
+  await run();
+  expect(await canView(otherId, shared._id)).toBe(false);
+  expect((await db.getSkillById(shared._id))?.syncSharingGroupIds).toEqual([]);
+  expect(employees._id).toBeDefined();
+  expect(outsiders._id).toBeDefined();
 });

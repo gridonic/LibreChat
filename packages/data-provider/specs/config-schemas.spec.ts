@@ -1235,6 +1235,64 @@ describe('configSchema fileListLimit', () => {
 });
 
 describe('configSchema skillSync', () => {
+  it.each([
+    { paths: ['skills/internal'], groups: ['employees'] },
+    { paths: ['skills/shared'], groups: [] },
+  ])('accepts configurable audience rules %j', (rule) => {
+    const result = configSchema.safeParse({
+      version: '1.3.13',
+      skillSync: {
+        github: {
+          enabled: true,
+          sources: [
+            {
+              id: 'test',
+              owner: 'example',
+              repo: 'skills',
+              paths: ['skills'],
+              credentialKey: 'test',
+              sharePublicly: false,
+              sharingRules: [rule],
+            },
+          ],
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(result.data?.skillSync?.github?.sources[0].sharingRules).toEqual([rule]);
+  });
+  it.each([
+    { sharePublicly: true, sharingRules: [{ paths: ['skills'], groups: ['employees'] }] },
+    {
+      sharePublicly: false,
+      sharingRules: [{ paths: ['skills'], groups: ['employees', 'employees'] }],
+    },
+    { sharePublicly: false, sharingRules: [{ paths: ['../private'], groups: ['employees'] }] },
+    { sharePublicly: false, sharingRules: [{ paths: ['skills', 'skills/internal'], groups: [] }] },
+    { sharePublicly: false, sharingRules: [{ paths: ['skills'], groups: [''] }] },
+  ])('rejects invalid audience rules %j', (fields) => {
+    expect(
+      configSchema.safeParse({
+        version: '1.3.13',
+        skillSync: {
+          github: {
+            enabled: true,
+            sources: [
+              {
+                id: 'test',
+                owner: 'example',
+                repo: 'skills',
+                paths: ['skills'],
+                credentialKey: 'test',
+                ...fields,
+              },
+            ],
+          },
+        },
+      }).success,
+    ).toBe(false);
+  });
+
   it.each([undefined, true, false])('accepts source sharePublicly=%s', (sharePublicly) => {
     const result = configSchema.safeParse({
       version: '1.3.13',

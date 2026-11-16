@@ -101,6 +101,7 @@ function createRunner({ getConfig, loadAppConfig, allowServerCredentials = true 
     finishSkillUploadCleanupHold: db.finishSkillUploadCleanupHold,
     deleteSkillFile: db.deleteSkillFile,
     deleteSkill: deleteSkillForLegacy,
+    reconcileSkillSyncSharing: db.reconcileSkillSyncSharing,
     reserveBlob: (options) => reserveSkillBlobForConfig(resolveAppConfig(), options),
     grantPermission: async ({
       principalType,
