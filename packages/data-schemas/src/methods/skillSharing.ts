@@ -42,7 +42,9 @@ export function createSkillSharingMethods(
         })
         .sort();
       const role = await runAsSystem(() =>
-        AccessRole.findOne({ accessRoleId: AccessRoleIds.SKILL_VIEWER, tenantId: null }).lean(),
+        AccessRole.findOne({ accessRoleId: AccessRoleIds.SKILL_VIEWER, tenantId: null })
+          .lean()
+          .exec(),
       );
       if (!role) throw new Error('Skill viewer role unavailable');
       const previous = skill.syncSharingGroupIds ?? [];
