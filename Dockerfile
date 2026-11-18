@@ -6,7 +6,7 @@ FROM docker.io/library/node:24.22.3-alpine3.24@sha256:98e4e60b35fd50143e1838da29
 RUN apk upgrade --no-cache
 RUN npm install --global --ignore-scripts npm@11.21.3 && npm cache clean --force
 RUN apk add --no-cache bash jemalloc
-RUN apk add --no-cache python3 py3-pip uv
+RUN apk add --no-cache python3 py3-pip
 
 # Set environment variable to use jemalloc
 ENV LD_PRELOAD=/usr/lib/libjemalloc.so.2
