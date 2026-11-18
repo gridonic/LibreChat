@@ -52,7 +52,7 @@ it('retains ownership of partial grants until a later pass removes them', async 
     .mockRejectedValueOnce(new Error('Synthetic interrupted write'));
   const methods = createSkillSharingMethods(mongoose, {
     grantPermission: grant,
-    revokePermission: db.revokePermission,
+    deleteAclEntries: db.deleteAclEntries,
   });
   await expect(
     methods.reconcileSkillSyncSharing({

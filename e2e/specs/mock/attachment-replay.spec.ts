@@ -8,7 +8,7 @@ import {
   getAccessToken,
   selectMockEndpoint,
   isAgentGenerationStart,
-  uploadViaLegacyOption,
+  uploadViaUnifiedButton,
   sendMessageAndWaitForCompletion,
 } from './helpers';
 import { deleteConversations, deleteMessagesByConversation, withMongo } from './db';
@@ -22,13 +22,13 @@ test('attachment decisions survive generation, regenerate, continue and steer re
   const marker = `ATTACHMENT_BODY_${randomUUID()}`;
   const assertion = (expected: string) => `E2E_ASSERT_ATTACHMENT:${expected}:${marker}`;
   await page.goto('/c/new');
-  await selectMockEndpoint(page, MOCK_ENDPOINTS[0]);
+  await selectMockEndpoint(page, MOCK_ENDPOINTS[1]);
   const token = await getAccessToken(page);
   try {
-    const upload = await uploadViaLegacyOption(page, 'Upload as Text', {
-      name: 'replay.txt',
-      mimeType: 'text/plain',
-      content: marker,
+    const upload = await uploadViaUnifiedButton(page, {
+      name: 'replay.json',
+      mimeType: 'application/json',
+      content: JSON.stringify({ marker }),
     });
     expect(upload.ok()).toBeTruthy();
     file = (await upload.json()) as TFile;
@@ -54,15 +54,15 @@ test('attachment decisions survive generation, regenerate, continue and steer re
       page.getByRole('button', { name: 'Regenerate', exact: true }).last().click(),
     ]);
     await expect(page.getByRole('button', { name: 'Stop generating' })).toBeVisible();
-    await page.getByRole('button', { name: 'Exclude from future messages: replay.txt' }).click();
+    await page.getByRole('button', { name: 'Exclude from future messages: replay.json' }).click();
     await expect(
-      page.getByRole('button', { name: 'Include in future messages: replay.txt' }),
+      page.getByRole('button', { name: 'Include in future messages: replay.json' }),
     ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Stop generating' })).not.toBeVisible({
       timeout: 30_000,
     });
     await expect(
-      page.getByRole('button', { name: 'Include in future messages: replay.txt' }),
+      page.getByRole('button', { name: 'Include in future messages: replay.json' }),
     ).toBeVisible();
     await expect
       .poll(

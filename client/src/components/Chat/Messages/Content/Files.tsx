@@ -35,7 +35,7 @@ const Files = ({ message }: { message?: TMessage }) => {
     return (
       <div className="flex max-w-56 flex-col items-start gap-1">
         {excluded && (
-          <span className="text-xs text-text-secondary">
+          <span className="text-text-secondary text-xs">
             {localize(
               automaticallyExcluded ? 'com_ui_attachment_rejected' : 'com_ui_attachment_excluded',
             )}
@@ -68,7 +68,7 @@ const Files = ({ message }: { message?: TMessage }) => {
     <>
       <MessageFiles files={message?.files} renderFileActions={attachmentControl} />
       {exclusion.isError && (
-        <p role="alert" className="text-sm text-text-destructive">
+        <p role="alert" className="text-text-destructive text-sm">
           {localize('com_ui_attachment_update_failed')}
         </p>
       )}

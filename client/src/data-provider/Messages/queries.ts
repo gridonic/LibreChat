@@ -301,7 +301,7 @@ export async function loadConversationMessages(
   return stableMessages;
 }
 
-export const useGetMessagesByConvoId = <TData = t.TMessage[],>(
+export const useGetMessagesByConvoId = <TData = t.TMessage[]>(
   id: string,
   config?: UseQueryOptions<t.TMessage[], unknown, TData>,
   options?: { isStreaming?: boolean },
@@ -449,7 +449,7 @@ export function refetchMessagesOnMount(query: Query<t.TMessage[], unknown>): boo
 }
 
 /** Secondary readers follow the session's history query without starting another fetch on key changes. */
-export const useCachedMessages = <TData = t.TMessage[],>(
+export const useCachedMessages = <TData = t.TMessage[]>(
   id: string,
   select?: (messages: t.TMessage[]) => TData,
 ): QueryObserverResult<TData> => useGetMessagesByConvoId(id, { enabled: false, select });

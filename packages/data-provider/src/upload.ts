@@ -81,12 +81,11 @@ const createHttpError = async (response: Response, formData: FormData) => {
   try {
     const data = (await response.json()) as { message?: string; code?: unknown; error?: unknown };
     message = data.message || message;
-    responseCode =
-      typeof data.code === 'string'
-        ? data.code
-        : typeof data.error === 'string'
-          ? data.error
-          : undefined;
+    if (typeof data.code === 'string') {
+      responseCode = data.code;
+    } else if (typeof data.error === 'string') {
+      responseCode = data.error;
+    }
   } catch {
     // Preserve the status-based fallback for non-JSON responses.
   }

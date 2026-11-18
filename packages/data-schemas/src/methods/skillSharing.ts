@@ -11,7 +11,7 @@ export type SkillSharingMethods = {
 /** Database boundary for group grants owned by native skill sync. */
 export function createSkillSharingMethods(
   mongoose: typeof import('mongoose'),
-  acl: Pick<AclEntryMethods, 'grantPermission' | 'revokePermission'>,
+  acl: Pick<AclEntryMethods, 'grantPermission' | 'deleteAclEntries'>,
 ): SkillSharingMethods {
   return {
     async reconcileSkillSyncSharing({
@@ -60,11 +60,21 @@ export function createSkillSharingMethods(
       // Record ownership before ACL writes so a failed pass can remove partially
       // applied grants even if the configuration changes before the retry.
       if (JSON.stringify(previous) !== JSON.stringify(pending)) await save(pending);
+      const revokeGroup = (id: string) =>
+        acl.deleteAclEntries({
+          resourceType: ResourceType.SKILL,
+          resourceId: skillId,
+          principalType: PrincipalType.GROUP,
+          principalId: new mongoose.Types.ObjectId(id),
+        });
       for (const id of previous) {
-        if (!desired.includes(id))
-          await acl.revokePermission(PrincipalType.GROUP, id, ResourceType.SKILL, skillId);
+        if (!desired.includes(id)) await revokeGroup(id);
       }
-      await acl.revokePermission(PrincipalType.PUBLIC, null, ResourceType.SKILL, skillId);
+      await acl.deleteAclEntries({
+        resourceType: ResourceType.SKILL,
+        resourceId: skillId,
+        principalType: PrincipalType.PUBLIC,
+      });
       const entries = await AclEntry.find({
         resourceType: ResourceType.SKILL,
         resourceId: skillId,
@@ -80,7 +90,7 @@ export function createSkillSharingMethods(
           continue;
         // Replacing a temporary grant with a configured permanent grant also
         // clears its expiry; grantPermission intentionally preserves omitted fields.
-        await acl.revokePermission(PrincipalType.GROUP, id, ResourceType.SKILL, skillId);
+        await revokeGroup(id);
         await acl.grantPermission(
           PrincipalType.GROUP,
           id,

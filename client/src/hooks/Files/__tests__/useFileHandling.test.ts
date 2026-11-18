@@ -312,7 +312,7 @@ describe('useFileHandling', () => {
       });
       const body = mockMutate.mock.calls[0][0] as FormData;
       act(() => mockUploadOptions.onError?.({ response: { status: 413, data } }, body));
-      expect(mockDeleteFileById).toHaveBeenCalledWith(body.get('file_id'));
+      expect(mockDeleteFileById).toHaveBeenCalledWith(body.get('file_id'), expect.any(Function));
       expect(mockLocalize).toHaveBeenCalledWith('com_error_attachment_text_limit', {
         filename: 'keywords.csv',
       });

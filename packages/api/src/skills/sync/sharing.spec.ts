@@ -377,6 +377,9 @@ it('applies configured folder audiences during native sync and updates only owne
     refreshLock: db.refreshSkillSyncLock,
     releaseLock: db.releaseSkillSyncLock,
     createAdapter: () => adapter,
+    reserveBlob: async () => {
+      throw new Error('No bundled files');
+    },
     saveBuffer: async () => {
       throw new Error('No bundled files');
     },
