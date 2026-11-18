@@ -14,7 +14,7 @@ ENV LD_PRELOAD=/usr/lib/libjemalloc.so.2
 ENV SCARF_ANALYTICS=false
 
 # Add `uv` for extended MCP support
-COPY --from=ghcr.io/astral-sh/uv:0.13.4@sha256:9f130421e930bfbdc563c00740466603f8723158e90297d07957c2294640262b /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.13.9@sha256:d3b601f0c7b118bc1753febf7c41cc80981df678445e0254284eecf84db79a7d /uv /uvx /bin/
 ENV UV_SYSTEM_CERTS=true
 RUN uv --version
 
