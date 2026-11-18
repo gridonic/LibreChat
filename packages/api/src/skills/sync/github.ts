@@ -1959,8 +1959,15 @@ async function syncSource(params: {
             `Skill "${effectivePrepared.existing.name}" was modified during sync`,
           );
         }
-        if (!source.sharingRules)
-          await ensureSourceSharing(deps, effectivePrepared.existing._id, source);
+        // Apply configured restrictions before either files or body become visible.
+        // A failed audience change must leave replacement content unpublished.
+        await ensureSourceSharing(
+          deps,
+          effectivePrepared.existing._id,
+          source,
+          false,
+          discovered.rootPath,
+        );
         const previousFiles = await deps.listSkillFiles(effectivePrepared.existing._id);
         const cleanupHoldOwner = crypto.randomUUID();
         const journal: SyncSkillFilesJournal = {
@@ -2044,15 +2051,6 @@ async function syncSource(params: {
         for (const fileId of new Set(journal.heldSupersededFileIds)) {
           const released = await deps.finishSkillUploadCleanupHold(fileId, cleanupHoldOwner, true);
           if (!released) throw new Error(`Skill cleanup hold was lost for ${fileId}`);
-        }
-        if (source.sharingRules) {
-          await ensureSourceSharing(
-            deps,
-            effectivePrepared.existing._id,
-            source,
-            false,
-            discovered.rootPath,
-          );
         }
         counts.syncedSkillCount++;
         counts.syncedFileCount += fileCounts.syncedFileCount;

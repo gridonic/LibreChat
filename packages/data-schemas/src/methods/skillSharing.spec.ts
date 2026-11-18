@@ -1,6 +1,11 @@
 import mongoose, { Types } from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
-import { PrincipalType, ResourceType, PermissionBits } from 'librechat-data-provider';
+import {
+  PrincipalType,
+  ResourceType,
+  PermissionBits,
+  AccessRoleIds,
+} from 'librechat-data-provider';
 import type { AllMethods } from './index';
 import { createSkillSharingMethods } from './skillSharing';
 import { tenantStorage } from '~/config/tenantContext';
@@ -76,6 +81,33 @@ it('does not resolve a same-named group from another tenant', async () => {
     db.reconcileSkillSyncSharing({ skillId: String(skill._id), groups: ['foreign-only'] }),
   ).rejects.toThrow('missing or ambiguous');
   expect(await db.findEntriesByResource(ResourceType.SKILL, skill._id)).toEqual([]);
+});
+
+it('replaces a matching temporary viewer grant with a permanent configured grant', async () => {
+  const group = await db.createGroup({ name: 'permanent-readers', source: 'local' });
+  const skill = await imported('permanent-sharing');
+  const role = await db.findRoleByIdentifier(AccessRoleIds.SKILL_VIEWER);
+  if (!role) throw new Error('Missing fixture role');
+  await db.grantPermission(
+    PrincipalType.GROUP,
+    group._id,
+    ResourceType.SKILL,
+    skill._id,
+    role.permBits,
+    skill.author,
+    undefined,
+    role._id,
+    new Date(Date.now() + 60_000),
+  );
+  expect(
+    (await db.findEntriesByResource(ResourceType.SKILL, skill._id))[0].expiredAt,
+  ).toBeDefined();
+  await db.reconcileSkillSyncSharing({ skillId: String(skill._id), groups: ['permanent-readers'] });
+  const entries = await db.findEntriesByResource(ResourceType.SKILL, skill._id);
+  expect(entries).toHaveLength(1);
+  expect(entries[0].expiredAt).toBeUndefined();
+  expect(entries[0].permBits).toBe(role.permBits);
+  expect(String(entries[0].roleId)).toBe(String(role._id));
 });
 
 it('resolves the global viewer role while executing inside a source tenant', async () => {

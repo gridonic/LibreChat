@@ -331,16 +331,20 @@ it('applies configured folder audiences during native sync and updates only owne
     'packages/custom/acme/deck',
   ];
   let body = 'Initial body';
+  const storedFiles = new Map<string, Buffer>();
   const adapter: GitRepoAdapter = {
     resolveCommit: async () => ({ id: 'commit', treeId: 'tree' }),
-    fetchTreeEntries: async () =>
-      roots.map((root) => ({
+    fetchTreeEntries: async () => [
+      ...roots.map((root) => ({
         path: `${root}/SKILL.md`,
-        type: 'blob',
+        type: 'blob' as const,
         id: `${root}-${body}`,
         size: 128,
       })),
+      { path: `${roots[1]}/reference.txt`, type: 'blob', id: `file-${body}`, size: 128 },
+    ],
     fetchFileContent: async (_commit, entry) => {
+      if (entry.path.endsWith('/reference.txt')) return Buffer.from(`File: ${body}`);
       const segments = entry.path.split('/');
       const name = segments[segments.length - 2];
       return Buffer.from(
@@ -364,7 +368,9 @@ it('applies configured folder audiences during native sync and updates only owne
   };
   const runner = createGitHubSkillSyncRunner({
     ...db,
-    deleteFile: undefined,
+    deleteFile: async ({ filepath }) => {
+      storedFiles.delete(filepath);
+    },
     getConfig: () => ({
       github: { enabled: true, intervalMinutes: 60, runOnStartup: false, sources: [source] },
     }),
@@ -377,11 +383,14 @@ it('applies configured folder audiences during native sync and updates only owne
     refreshLock: db.refreshSkillSyncLock,
     releaseLock: db.releaseSkillSyncLock,
     createAdapter: () => adapter,
-    reserveBlob: async () => {
-      throw new Error('No bundled files');
-    },
-    saveBuffer: async () => {
-      throw new Error('No bundled files');
+    reserveBlob: async ({ userId, fileName, tenantId }) => ({
+      filepath: `/uploads/${fileName}`,
+      source: 'local',
+      writeLocation: { userId, fileName, basePath: 'uploads' as const, tenantId },
+    }),
+    saveBuffer: async ({ reservation, buffer }) => {
+      storedFiles.set(reservation.filepath, Buffer.from(buffer));
+      return { filepath: reservation.filepath, source: reservation.source };
     },
     grantPermission: ({ principalType, principalId, resourceType, resourceId, grantedBy }) =>
       db.grantPermission(
@@ -460,10 +469,26 @@ it('applies configured folder audiences during native sync and updates only owne
   await run();
   expect(await db.findEntriesByResource(ResourceType.SKILL, shared._id)).toEqual(aclBefore);
   expect((await db.getSkillById(shared._id))?.version).toBe(versionBefore);
+  await db.grantPermission(
+    PrincipalType.PUBLIC,
+    null,
+    ResourceType.SKILL,
+    shared._id,
+    PermissionBits.VIEW,
+  );
+  const beforeRestriction = await db.findEntriesByResource(ResourceType.SKILL, shared._id);
+  const beforeContent = await db.getSkillById(shared._id);
+  const beforeFiles = await db.listSkillFiles(shared._id);
+  const beforeBlobs = new Map(storedFiles);
   source.sharingRules![1].groups = ['missing-group'];
+  body = 'Confidential replacement body';
   const failed = await runner.runOnce();
   expect(failed.sources[0].status).not.toBe('succeeded');
-  expect(await db.findEntriesByResource(ResourceType.SKILL, shared._id)).toEqual(aclBefore);
+  expect(await db.findEntriesByResource(ResourceType.SKILL, shared._id)).toEqual(beforeRestriction);
+  expect((await db.getSkillById(shared._id))?.body).toBe(beforeContent?.body);
+  expect((await db.getSkillById(shared._id))?.version).toBe(beforeContent?.version);
+  expect(await db.listSkillFiles(shared._id)).toEqual(beforeFiles);
+  expect(storedFiles).toEqual(beforeBlobs);
   source.sharingRules![1].groups = [];
   await run();
   expect(await canView(otherId, shared._id)).toBe(false);

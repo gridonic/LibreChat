@@ -85,7 +85,7 @@ export function createSkillSharingMethods(
         if (
           existing?.permBits === role.permBits &&
           String(existing.roleId) === String(role._id) &&
-          (!existing.expiredAt || existing.expiredAt > new Date())
+          existing.expiredAt == null
         )
           continue;
         // Replacing a temporary grant with a configured permanent grant also
