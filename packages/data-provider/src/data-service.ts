@@ -2235,3 +2235,22 @@ export function revokeScheduleMCPConsent(id: string, expectedRevision: string): 
     data: { expectedRevision },
   });
 }
+
+export function setMessageFileExcluded(payload: {
+  conversationId: string;
+  messageId: string;
+  fileId: string;
+  excluded: boolean;
+  replayAfterMessageId?: string;
+}): Promise<{
+  messageId: string;
+  fileId: string;
+  excluded: boolean;
+  replayAfterMessageId?: string;
+  attachmentReplay: NonNullable<t.TMessage['attachmentReplay']>;
+}> {
+  return request.patch(
+    endpoints.messageFileExclusion(payload.conversationId, payload.messageId, payload.fileId),
+    { excluded: payload.excluded, replayAfterMessageId: payload.replayAfterMessageId },
+  );
+}

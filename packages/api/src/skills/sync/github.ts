@@ -4,6 +4,7 @@ import { Types } from 'mongoose';
 import { logger, tenantStorage } from '@librechat/data-schemas';
 import {
   ResourceType,
+  SystemRoles,
   PrincipalType,
   AccessRoleIds,
   SKILL_SYNC_DEFAULT_DISCOVERY_DEPTH,
@@ -247,6 +248,7 @@ export type GitHubSkillSyncDeps = SkillUploadIntentDeps & {
     user?: Types.ObjectId | string;
     tenantId?: string;
   }) => Promise<void>;
+  reconcileSkillSyncSharing?: (params: { skillId: string; groups: string[] }) => Promise<void>;
   grantPermission: (params: {
     principalType: string;
     principalId: string | Types.ObjectId | null;
@@ -790,13 +792,30 @@ function makeStatusKey(sourceId: string, tenantId?: string): string {
   return `${tenantId ?? ''}:${sourceId}`;
 }
 
-async function ensurePublicViewer(
+async function ensureSourceSharing(
   deps: GitHubSkillSyncDeps,
   skillId: Types.ObjectId,
+  source: SkillSyncGitHubSourceConfig,
+  isNew = false,
+  skillPath = '',
 ): Promise<void> {
+  const rule = source.sharingRules?.find((entry) =>
+    entry.paths.some((root) => skillPath === root || skillPath.startsWith(`${root}/`)),
+  );
+  if (rule) {
+    if (!deps.reconcileSkillSyncSharing)
+      throw new SkillSyncError('SKILL_SHARING_UNAVAILABLE', 'Configured sharing unavailable');
+    await deps.reconcileSkillSyncSharing({ skillId: String(skillId), groups: rule.groups });
+  }
+  const publicSharing = source.sharePublicly !== false;
+  // Bootstrap administrator discovery only for new/recreated restricted mirrors.
+  // Existing ACLs belong to administrators, including removal of this grant.
+  if (!publicSharing && !isNew) {
+    return;
+  }
   await deps.grantPermission({
-    principalType: PrincipalType.PUBLIC,
-    principalId: null,
+    principalType: publicSharing ? PrincipalType.PUBLIC : PrincipalType.ROLE,
+    principalId: publicSharing ? null : SystemRoles.ADMIN,
     resourceType: ResourceType.SKILL,
     resourceId: skillId,
     accessRoleId: AccessRoleIds.SKILL_VIEWER,
@@ -1877,7 +1896,7 @@ async function syncSource(params: {
       discovered: DiscoveredSkill,
       prepared: PreparedExistingRemoteSkill,
     ): Promise<void> => {
-      await ensurePublicViewer(deps, prepared.existing._id);
+      await ensureSourceSharing(deps, prepared.existing._id, source, false, discovered.rootPath);
       if (canReconcileStaleSkills) {
         const staleConflictCleanup = await deleteNameConflictingStaleSkill({
           deps,
@@ -1940,7 +1959,15 @@ async function syncSource(params: {
             `Skill "${effectivePrepared.existing.name}" was modified during sync`,
           );
         }
-        await ensurePublicViewer(deps, effectivePrepared.existing._id);
+        // Apply configured restrictions before either files or body become visible.
+        // A failed audience change must leave replacement content unpublished.
+        await ensureSourceSharing(
+          deps,
+          effectivePrepared.existing._id,
+          source,
+          false,
+          discovered.rootPath,
+        );
         const previousFiles = await deps.listSkillFiles(effectivePrepared.existing._id);
         const cleanupHoldOwner = crypto.randomUUID();
         const journal: SyncSkillFilesJournal = {
@@ -2044,7 +2071,7 @@ async function syncSource(params: {
           discovered,
           assertNotCancelled,
         });
-        await ensurePublicViewer(deps, skill._id);
+        await ensureSourceSharing(deps, skill._id, source, upserted.created, discovered.rootPath);
         logSkillWarnings(skill.name, upserted.warnings);
         counts.syncedSkillCount++;
         counts.syncedFileCount += fileCounts.syncedFileCount;

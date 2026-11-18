@@ -1,7 +1,13 @@
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useCallback, useContext } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Constants, QueryKeys, dataService } from 'librechat-data-provider';
 import { useQuery, useQueries, useQueryClient } from '@tanstack/react-query';
+import {
+  Constants,
+  QueryKeys,
+  dataService,
+  getAttachmentReplayStates,
+  getBranchAttachmentReplayStates,
+} from 'librechat-data-provider';
 import type {
   Query,
   QueryClient,
@@ -17,6 +23,7 @@ import {
   isNotFoundError,
   logger,
 } from '~/utils';
+import { MessagesViewContext } from '~/Providers/MessagesViewContext';
 
 type StableMessagesParams = {
   pathname: string;
@@ -279,6 +286,17 @@ export async function loadConversationMessages(
     );
   }
 
+  if (stableMessages === result) {
+    queryClient.setQueryData(
+      [QueryKeys.attachmentReplay, id],
+      Object.fromEntries(
+        result.flatMap((message) =>
+          message.attachmentReplay ? [[message.messageId, message.attachmentReplay]] : [],
+        ),
+      ),
+    );
+  }
+
   completeMessagesReplyFetch(queryClient, id, request, stableMessages === result);
   return stableMessages;
 }
@@ -435,3 +453,31 @@ export const useCachedMessages = <TData = t.TMessage[]>(
   id: string,
   select?: (messages: t.TMessage[]) => TData,
 ): QueryObserverResult<TData> => useGetMessagesByConvoId(id, { enabled: false, select });
+
+export function useMessageAttachmentReplay(message?: t.TMessage) {
+  const view = useContext(MessagesViewContext);
+  const policies = useQuery<Record<string, t.AttachmentReplayDecision[]>>(
+    [QueryKeys.attachmentReplay, message?.conversationId ?? ''],
+    { enabled: false },
+  ).data;
+  const head = view?.latestMessageId ?? message?.messageId;
+  const hasFiles = !!message?.files?.length;
+  const select = useCallback(
+    (messages: t.TMessage[]) =>
+      !hasFiles
+        ? {}
+        : (getBranchAttachmentReplayStates(messages, head, policies)[message?.messageId ?? ''] ??
+          {}),
+    [head, message?.messageId, hasFiles, policies],
+  );
+  return (
+    useQuery<t.TMessage[], unknown, Record<string, t.AttachmentReplayState>>(
+      [QueryKeys.messages, message?.conversationId ?? ''],
+      {
+        enabled: false,
+        select,
+      },
+    ).data ??
+    (message ? getAttachmentReplayStates([message], policies)[message.messageId] : undefined)
+  );
+}

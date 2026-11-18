@@ -40,6 +40,7 @@ import {
   type OpenIDRefreshFlightMethods,
 } from './openidRefreshFlight';
 import { createResourceLockMethods, type ResourceLockMethods } from './resourceLock';
+import { createSkillSharingMethods, type SkillSharingMethods } from './skillSharing';
 export {
   createMCPAuthorizationFenceRetryStorage,
   type MCPAuthorizationFenceRetryStorage,
@@ -312,6 +313,7 @@ export {
 export type AllMethods = PermissionPrincipalStorage &
   SubagentContentMethods &
   ToolApprovalGrantStorage &
+  SkillSharingMethods &
   UserMethods &
   SessionMethods &
   TokenMethods &
@@ -542,6 +544,7 @@ export function createMethods(
     getSoleOwnedResourceIds: aclEntryMethods.getSoleOwnedResourceIds,
   };
   const skillMethods = createSkillMethods(mongoose, skillDeps);
+  const skillSharingMethods = createSkillSharingMethods(mongoose, aclEntryMethods);
 
   // Tier 1: action methods (created as variable for agent dependency)
   const actionMethods = createActionMethods(mongoose);
@@ -611,6 +614,7 @@ export function createMethods(
     ...spendTokensMethods,
     ...promptMethods,
     ...skillMethods,
+    ...skillSharingMethods,
     ...createSkillSyncMethods(mongoose),
     ...createSkillLifecycleMethods(mongoose),
     ...agentTriggerDeliveryMethods,

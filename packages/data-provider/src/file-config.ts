@@ -598,6 +598,7 @@ export const fileConfig = {
   fileTokenLimit: defaultTokenLimit,
   fileContextSizeLimit: defaultContextSizeLimit,
   fileContextCharLimit: defaultContextCharLimit,
+  allowMessageFileExclusion: false,
   clientImageResize: {
     enabled: false,
     maxWidth: 1900,
@@ -676,6 +677,7 @@ export const fileConfigSchema = z.object({
   fileTokenLimit: z.number().min(0).optional(),
   fileContextSizeLimit: z.number().min(0).optional(),
   fileContextCharLimit: z.number().min(0).optional(),
+  allowMessageFileExclusion: z.boolean().optional(),
   codeEnvLivenessSafeWindowMs: z.number().min(0).optional(),
   legacySearchProbeTimeoutMs: z.number().min(1).optional(),
   imageGeneration: z
@@ -1327,6 +1329,10 @@ function buildMergedFileConfig(dynamic: DynamicFileConfig | undefined): FileConf
 
   if (dynamic.fileContextSizeLimit !== undefined) {
     mergedConfig.fileContextSizeLimit = mbToBytes(dynamic.fileContextSizeLimit);
+  }
+
+  if (dynamic.allowMessageFileExclusion !== undefined) {
+    mergedConfig.allowMessageFileExclusion = dynamic.allowMessageFileExclusion;
   }
 
   if (dynamic.fileContextCharLimit !== undefined) {

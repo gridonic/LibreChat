@@ -1,0 +1,70 @@
+{
+  "package": "@librechat/agents",
+  "version": "4.2.7",
+  "upstream": ["LibreChat-AI/agents#632", "LibreChat-AI/LibreChat#17302"],
+  "files": [
+    {
+      "path": "dist/cjs/tools/subagent/diagnostics.cjs",
+      "beforeSha256": "662d2f12961de490af05638491520dc905a9d484c668cb2489136ab9fd42f7a4",
+      "edits": [
+        {
+          "before": "const SUBAGENT_RESOLUTION_MESSAGES = {\n",
+          "after": "const SUBAGENT_RESOLUTION_MESSAGES = {\n\tauthentication_required: \"Subagent error: Required tool authentication is incomplete. Complete the sign-in prompt before retrying.\",\n\ttools_unavailable: \"Subagent error: Required tools are unavailable. Retry later.\",\n",
+          "count": 1
+        },
+        {
+          "before": "\t\tcase \"host_argument_rejected\":",
+          "after": "\t\tcase \"authentication_required\":\n\t\tcase \"tools_unavailable\":\n\t\tcase \"host_argument_rejected\":",
+          "count": 1
+        }
+      ],
+      "afterSha256": "8de0481640f15edaf904b5f5285cfb1a99dbaee73409c599ab2eee91e00c8270"
+    },
+    {
+      "path": "dist/esm/tools/subagent/diagnostics.mjs",
+      "beforeSha256": "206f90124c6d31e5495e4de847ba0f4580d834fee1570e2c2312d4d1057700c7",
+      "edits": [
+        {
+          "before": "const SUBAGENT_RESOLUTION_MESSAGES = {\n",
+          "after": "const SUBAGENT_RESOLUTION_MESSAGES = {\n\tauthentication_required: \"Subagent error: Required tool authentication is incomplete. Complete the sign-in prompt before retrying.\",\n\ttools_unavailable: \"Subagent error: Required tools are unavailable. Retry later.\",\n",
+          "count": 1
+        },
+        {
+          "before": "\t\tcase \"host_argument_rejected\":",
+          "after": "\t\tcase \"authentication_required\":\n\t\tcase \"tools_unavailable\":\n\t\tcase \"host_argument_rejected\":",
+          "count": 1
+        }
+      ],
+      "afterSha256": "59c83453f41d21004bab412a6d099dd0675657c039e7929f41ab8848b7a48619"
+    },
+    {
+      "path": "dist/types/tools/subagent/diagnostics.d.ts",
+      "beforeSha256": "f4e77f088ac56274632c2866c6b4279c5e04f589a87e64cfdb57adc2b95135d2",
+      "edits": [
+        {
+          "before": "declare const SUBAGENT_RESOLUTION_MESSAGES: {\n",
+          "after": "declare const SUBAGENT_RESOLUTION_MESSAGES: {\n    readonly authentication_required: \"Subagent error: Required tool authentication is incomplete. Complete the sign-in prompt before retrying.\";\n    readonly tools_unavailable: \"Subagent error: Required tools are unavailable. Retry later.\";\n",
+          "count": 1
+        }
+      ],
+      "afterSha256": "0266ac2911a00ce726af2c946e4c055283c6c53772a589f47e755af497fe6651"
+    },
+    {
+      "path": "src/tools/subagent/diagnostics.ts",
+      "beforeSha256": "4be69b974da5706043caebf22dc1abe5ae1e51baeaf8e657180a79d985bb4271",
+      "edits": [
+        {
+          "before": "const SUBAGENT_RESOLUTION_MESSAGES = {\n",
+          "after": "const SUBAGENT_RESOLUTION_MESSAGES = {\n  authentication_required: 'Subagent error: Required tool authentication is incomplete. Complete the sign-in prompt before retrying.',\n  tools_unavailable: 'Subagent error: Required tools are unavailable. Retry later.',\n",
+          "count": 1
+        },
+        {
+          "before": "  case 'host_argument_rejected':",
+          "after": "  case 'authentication_required':\n  case 'tools_unavailable':\n  case 'host_argument_rejected':",
+          "count": 1
+        }
+      ],
+      "afterSha256": "ca5e40513103781def00f334fc402c81ec7e6eeb1f127cb3be6aed3ad0ebb0c3"
+    }
+  ]
+}

@@ -134,6 +134,7 @@ jest.mock('@librechat/api', () => {
     processAudioFile: jest.fn(),
     extractInspectableFileText: jest.fn(async ({ extract }) => extract()),
     assertExtractedTextInspectable: jest.fn(),
+    assertAgentUploadTextLimits: jest.fn(),
     getUploadExtractedTextPlan,
     UPLOAD_EXTRACTED_TEXT_PLANS,
     getFileExtractionLogDetails,
@@ -337,6 +338,7 @@ const {
   processAudioFile,
   extractInspectableFileText,
   assertExtractedTextInspectable,
+  assertAgentUploadTextLimits,
   contentFilterBlockResponse,
   createCodeApiRateLimitBudget,
   getCodeApiUploadOptions,
@@ -527,6 +529,20 @@ describe('processAgentFileUpload', () => {
   });
 
   describe('content filtering for extracted context', () => {
+    it('rejects oversized extracted text before writing a stored file or agent resource', async () => {
+      const error = Object.assign(new Error('attachment text limit'), {
+        code: 'AGENT_ATTACHMENT_LIMIT_EXCEEDED',
+      });
+      assertAgentUploadTextLimits.mockImplementationOnce(() => {
+        throw error;
+      });
+      await expect(
+        processAgentFileUpload({ req: makeReq(), res: mockRes, metadata: makeMetadata() }),
+      ).rejects.toBe(error);
+      expect(db.createFile).not.toHaveBeenCalled();
+      expect(db.addAgentResourceFile).not.toHaveBeenCalled();
+    });
+
     const filters = { files: { pii: {} } };
     const extractedTextFinding = {
       label: 'protected value',

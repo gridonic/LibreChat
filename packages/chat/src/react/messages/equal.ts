@@ -50,6 +50,7 @@ export function areMessageFieldsEqual(
     prevMsg.isUserSubmitted === nextMsg.isUserSubmitted &&
     (prevMsg.children?.length ?? 0) === (nextMsg.children?.length ?? 0) &&
     prevMsg.content === nextMsg.content &&
+    prevMsg.attachmentReplay === nextMsg.attachmentReplay &&
     prevMsg.model === nextMsg.model &&
     prevMsg.endpoint === nextMsg.endpoint &&
     prevMsg.iconURL === nextMsg.iconURL &&

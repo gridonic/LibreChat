@@ -6,6 +6,7 @@ const EVENT_STREAM_MEDIA_TYPE = 'text/event-stream';
 const HEARTBEAT_TIMEOUT_MS = 15_000;
 
 interface UploadErrorData {
+  error?: string;
   message?: string;
   code?: number;
   temp_file_id?: string;
@@ -23,7 +24,7 @@ class FileUploadError extends Error {
   public file_id: string;
   public tool_resource?: EToolResources;
   public display_to_user: boolean;
-  public response: { data: { message: string; code?: string } };
+  public response: { data: { message: string; code?: string; error?: string } };
 
   constructor(
     message: string,
@@ -42,7 +43,7 @@ class FileUploadError extends Error {
     this.response = {
       data: {
         message: displayToUser ? message : '',
-        ...(responseCode != null && { code: responseCode }),
+        ...(responseCode != null && { code: responseCode, error: responseCode }),
       },
     };
   }
@@ -78,9 +79,13 @@ const createHttpError = async (response: Response, formData: FormData) => {
   let message = `Server responded with status: ${response.status}`;
   let responseCode: string | undefined;
   try {
-    const data = (await response.json()) as { message?: string; code?: unknown };
+    const data = (await response.json()) as { message?: string; code?: unknown; error?: unknown };
     message = data.message || message;
-    responseCode = typeof data.code === 'string' ? data.code : undefined;
+    if (typeof data.code === 'string') {
+      responseCode = data.code;
+    } else if (typeof data.error === 'string') {
+      responseCode = data.error;
+    }
   } catch {
     // Preserve the status-based fallback for non-JSON responses.
   }
@@ -109,6 +114,7 @@ const createStreamError = (data: string, formData: FormData) => {
     error.tool_resource || getToolResource(formData),
     error.display_to_user ?? false,
     error.code ?? 0,
+    error.error,
   );
 };
 

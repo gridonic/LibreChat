@@ -2236,7 +2236,7 @@ function subagentResultResponses(text) {
       }
 
       return {
-        response: '',
+        response: marker.label === 'oauth-reconnect' ? 'Checking specialist access.' : '',
         toolCalls: [
           {
             id: `call_e2e_subagent_${marker.label}`,
@@ -3757,6 +3757,31 @@ function codeExecResponses({ filename, toolCallId, finalText, code }, toolNames)
   };
 }
 
+// Inspect model-facing content only; the assertion directive must not satisfy its own check.
+function attachmentReplayAssertionResponses({ messages, text }) {
+  const assertion = getMarkerValue(text, 'E2E_ASSERT_ATTACHMENT:');
+  const separator = assertion.indexOf(':');
+  const expected = assertion.slice(0, separator);
+  const token = assertion.slice(separator + 1);
+  const promptText = (messages ?? [])
+    .map((message) => getContentText(message.content))
+    .join('\n')
+    .replace(/E2E_ASSERT_ATTACHMENT:[^\n]*/g, '');
+  if (
+    !token ||
+    !['present', 'absent'].includes(expected) ||
+    promptText.includes(token) !== (expected === 'present')
+  ) {
+    throw new Error('E2E attachment replay assertion failed');
+  }
+  return {
+    responses: [
+      'E2E attachment replay assertion passed' +
+        (expected === 'present' ? ' replay-check'.repeat(100) : ''),
+    ],
+  };
+}
+
 function resolveResponses({ graph, messages, text, toolNames }) {
   const history = subagentHistory.responsesForText(text, {
     getLatestUserText,
@@ -3973,6 +3998,15 @@ function resolveResponses({ graph, messages, text, toolNames }) {
       responses: [MOCK_REPLY],
       resolveOnStream: (streamMessages) =>
         agentContextAssertionResponses({ messages: streamMessages, text }),
+    };
+  }
+
+  if (text.includes('E2E_ASSERT_ATTACHMENT:')) {
+    return {
+      responses: [MOCK_REPLY],
+      sleep: 25,
+      resolveOnStream: (streamMessages) =>
+        attachmentReplayAssertionResponses({ messages: streamMessages, text }),
     };
   }
 

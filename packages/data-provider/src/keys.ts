@@ -3,6 +3,7 @@ export enum QueryKeys {
   slackWorkspaces = 'slackWorkspaces',
   agentChannelWorkspaceRoutes = 'agentChannelWorkspaceRoutes',
   agentChannelWorkspaceTarget = 'agentChannelWorkspaceTarget',
+  attachmentReplay = 'attachmentReplay',
   messages = 'messages',
   /* Full content of one tool-call part, fetched when its preview is not enough */
   toolCallPart = 'toolCallPart',
@@ -157,6 +158,7 @@ export enum MutationKeys {
   channelLinkTicket = 'channelLinkTicket',
   channelLinks = 'channelLinks',
   resetToolApprovalGrants = 'resetToolApprovalGrants',
+  setMessageFileExcluded = 'setMessageFileExcluded',
   subagentControl = 'subagentControl',
   cancelBackgroundTasks = 'cancelBackgroundTasks',
   enqueueAgentQueuedTurn = 'enqueueAgentQueuedTurn',

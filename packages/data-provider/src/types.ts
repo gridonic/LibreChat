@@ -303,6 +303,7 @@ export type TError = {
   tool_resource?: EToolResources;
   response?: {
     data?: {
+      error?: string;
       message?: string;
     };
     status?: number;
