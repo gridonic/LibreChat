@@ -12,6 +12,7 @@
     "packages/*"
   ],
   "scripts": {
+    "postinstall": "node scripts/apply-agents-patch.cjs",
     "prepare": "node -e \"import('husky').then((h) => h.default()).catch(() => {})\"",
     "update": "node config/update.js",
     "add-balance": "node config/add-balance.js",

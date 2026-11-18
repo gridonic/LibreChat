@@ -1,9 +1,10 @@
 # v0.8.9
 
 # Base node image
-FROM docker.io/library/node:24.22.3-alpine AS node
+FROM docker.io/library/node:24.22.3-alpine3.24@sha256:98e4e60b35fd50143e1838da2957488c25aa3a3efbd48bb679923f77d6d3d873 AS node
 
 RUN apk upgrade --no-cache
+RUN npm install --global --ignore-scripts npm@11.21.1 && npm cache clean --force
 RUN apk add --no-cache bash jemalloc
 RUN apk add --no-cache python3 py3-pip uv
 
@@ -13,7 +14,8 @@ ENV LD_PRELOAD=/usr/lib/libjemalloc.so.2
 ENV SCARF_ANALYTICS=false
 
 # Add `uv` for extended MCP support
-COPY --from=ghcr.io/astral-sh/uv:0.9.5-python3.12-alpine /usr/local/bin/uv /usr/local/bin/uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.13.4@sha256:9f130421e930bfbdc563c00740466603f8723158e90297d07957c2294640262b /uv /uvx /bin/
+ENV UV_SYSTEM_CERTS=true
 RUN uv --version
 
 # Set configurable max-old-space-size with default
@@ -27,6 +29,8 @@ WORKDIR /app
 USER node
 
 COPY --chown=node:node package.json package-lock.json ./
+COPY --chown=node:node scripts/apply-agents-patch.cjs ./scripts/apply-agents-patch.cjs
+COPY --chown=node:node patches/agents-4.2.7-mcp-recovery.json ./patches/agents-4.2.7-mcp-recovery.json
 COPY --chown=node:node api/package.json ./api/package.json
 COPY --chown=node:node client/package.json ./client/package.json
 COPY --chown=node:node packages/data-provider/package.json ./packages/data-provider/package.json
