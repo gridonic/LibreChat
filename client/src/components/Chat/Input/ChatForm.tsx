@@ -29,6 +29,7 @@ import {
   PermissionTypes,
   isAgentsEndpoint,
   isAssistantsEndpoint,
+  resolveComposerTriggers,
 } from 'librechat-data-provider';
 import type { TChatProject, TMessage, TConversation } from 'librechat-data-provider';
 import type { QueuedMessageContext } from '@librechat/chat';
@@ -420,7 +421,10 @@ const ChatForm = memo(function ChatForm({
     [methods, steering],
   );
 
+  const configuredTriggers = startupConfig?.interface?.composerTriggers;
+  const triggers = useMemo(() => resolveComposerTriggers(configuredTriggers), [configuredTriggers]);
   const handleKeyUp = useHandleKeyUp({
+    triggers,
     index,
     textAreaRef,
   });
@@ -481,11 +485,11 @@ const ChatForm = memo(function ChatForm({
   const atCommandEnabled = useRecoilValue(store.atCommand);
   const idleActions = useMemo(
     () => ({
-      prompts: hasPromptsAccess && slashCommandEnabled,
-      mentions: atCommandEnabled,
+      prompts: hasPromptsAccess && slashCommandEnabled && triggers.prompts,
+      mentions: atCommandEnabled && triggers.modelSwitch,
       attach: attachTarget.canAttach,
     }),
-    [hasPromptsAccess, slashCommandEnabled, atCommandEnabled, attachTarget.canAttach],
+    [hasPromptsAccess, slashCommandEnabled, atCommandEnabled, attachTarget.canAttach, triggers],
   );
   const { submitText: submitAnswerText } = answerMode;
   const dictationAnswerModeActive = answerMode.composerAnswers;
@@ -717,7 +721,8 @@ const ChatForm = memo(function ChatForm({
               popoverAtom={plusPopoverAtom}
               newConversation={generateConversation}
               textAreaRef={textAreaRef}
-              commandChar="+"
+              commandChar={triggers.parallelResponse}
+              mode="add-convo"
               placeholder="com_ui_add_model_preset"
               includeAssistants={false}
             />
@@ -726,12 +731,18 @@ const ChatForm = memo(function ChatForm({
             <Mention
               index={index}
               popoverAtom={mentionPopoverAtom}
+              commandChar={triggers.modelSwitch}
               newConversation={newConversation}
               textAreaRef={textAreaRef}
             />
           </Suspense>
           <Suspense fallback={null}>
-            <PromptsCommand index={index} textAreaRef={textAreaRef} submitPrompt={submitPrompt} />
+            <PromptsCommand
+              index={index}
+              textAreaRef={textAreaRef}
+              commandChar={triggers.prompts}
+              submitPrompt={submitPrompt}
+            />
           </Suspense>
           {index === 0 && (
             <Suspense fallback={null}>
@@ -750,6 +761,7 @@ const ChatForm = memo(function ChatForm({
               textAreaRef={textAreaRef}
               conversationId={conversationId}
               agentId={conversation?.agent_id}
+              commandChar={triggers.skills}
             />
           </Suspense>
         </>

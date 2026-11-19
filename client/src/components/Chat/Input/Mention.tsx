@@ -14,6 +14,7 @@ type MentionProps = {
   newConversation: ConvoGenerator;
   textAreaRef: React.MutableRefObject<HTMLTextAreaElement | null>;
   commandChar?: string;
+  mode?: 'mention' | 'add-convo';
   placeholder?: TranslationKeys;
   includeAssistants?: boolean;
 };
@@ -22,7 +23,8 @@ function MentionContent({
   popoverAtom,
   newConversation,
   textAreaRef,
-  commandChar = '@',
+  commandChar,
+  mode,
   placeholder = 'com_ui_mention',
   includeAssistants = true,
 }: Omit<MentionProps, 'index'>) {
@@ -53,6 +55,7 @@ function MentionContent({
     <MentionPopover
       textAreaRef={textAreaRef}
       commandChar={commandChar}
+      mode={mode}
       placeholder={localize(placeholder)}
       options={options}
       isLoading={isLoading}

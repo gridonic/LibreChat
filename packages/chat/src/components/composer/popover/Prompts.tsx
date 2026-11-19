@@ -1,32 +1,33 @@
 import { useState, useRef, useEffect } from 'react';
 import { useCombobox } from '@librechat/client';
+import { DEFAULT_COMPOSER_TRIGGERS } from 'librechat-data-provider';
 import type { KeyboardEvent, MutableRefObject } from 'react';
 import type { CommandOption, CommandDismissReason } from './Command';
 import { removeCharIfLast } from '../../../core/textarea';
 import useInitPopoverInput from '../../../react/popover';
 import CommandPopover from './Command';
 
-const COMMAND_CHAR = '/';
-
 export interface PromptsPopoverProps<T extends CommandOption> {
   textAreaRef: MutableRefObject<HTMLTextAreaElement | null>;
+  commandChar?: string;
   /** Localized placeholder for the search field. */
   placeholder: string;
   prompts: T[];
   isLoading: boolean;
   /** The search field opened or closed; the host loads its catalog on open. */
   onOpenChange?: (open: boolean) => void;
-  /** A prompt was picked; the popover has already closed and dropped the `/`. A Tab pick passes
+  /** A prompt was picked; the popover has already closed and dropped the trigger. A Tab pick passes
    *  its event so the host can keep focus for a dialog that follows. */
   onSelectPrompt: (prompt: T, event?: KeyboardEvent<HTMLInputElement>) => void;
   /** Hides the popover. */
   onClose: () => void;
 }
 
-/** The `/` popover: filters the user's prompts and hands the pick to the host, which resolves
+/** The prompts popover: filters the user's prompts and hands the pick to the host, which resolves
  *  its text and either submits it or asks for its variables. */
 export default function PromptsPopover<T extends CommandOption>({
   textAreaRef,
+  commandChar = DEFAULT_COMPOSER_TRIGGERS.prompts,
   placeholder,
   prompts,
   isLoading,
@@ -45,7 +46,7 @@ export default function PromptsPopover<T extends CommandOption>({
   const initInputRef = useInitPopoverInput({
     inputRef,
     textAreaRef,
-    commandChar: COMMAND_CHAR,
+    commandChar,
     setSearchValue,
     setOpen,
   });
@@ -54,7 +55,7 @@ export default function PromptsPopover<T extends CommandOption>({
   openChangeRef.current = onOpenChange;
 
   /** The popover mounts closed and opens from its input's ref, which may already have moved the
-   *  text typed after the `/` into the search; only a real close clears it. */
+   *  text typed after the trigger into the search; only a real close clears it. */
   const wasOpen = useRef(false);
   useEffect(() => {
     if (open) {
@@ -75,7 +76,7 @@ export default function PromptsPopover<T extends CommandOption>({
     setOpen(false);
     onClose();
     if (textAreaRef.current) {
-      removeCharIfLast(textAreaRef.current, COMMAND_CHAR);
+      removeCharIfLast(textAreaRef.current, commandChar);
     }
     onSelectPrompt(prompt as T, e);
   };

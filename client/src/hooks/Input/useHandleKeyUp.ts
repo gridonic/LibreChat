@@ -2,7 +2,13 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { useSetAtom } from 'jotai';
 import { useSetRecoilState, useRecoilValue } from 'recoil';
 import { showSkillsPopoverFamily } from '@librechat/chat/react';
-import { PermissionTypes, Permissions, isAssistantsEndpoint } from 'librechat-data-provider';
+import {
+  DEFAULT_COMPOSER_TRIGGERS,
+  PermissionTypes,
+  Permissions,
+  isAssistantsEndpoint,
+} from 'librechat-data-provider';
+import type { ComposerTriggers } from 'librechat-data-provider';
 import { useGetLatestMessage } from '~/hooks/Messages/useLatestMessage';
 import useAgentCapabilities from '~/hooks/Agents/useAgentCapabilities';
 import useGetAgentsConfig from '~/hooks/Agents/useGetAgentsConfig';
@@ -31,22 +37,6 @@ const invalidKeys = {
  * pasted content that happens to start with a command character.
  */
 const MAX_COMMAND_TRIGGER_LENGTH = 5;
-const shouldTriggerCommand = (
-  textAreaRef: React.RefObject<HTMLTextAreaElement>,
-  commandChar: string,
-) => {
-  const text = textAreaRef.current?.value;
-  if (typeof text !== 'string' || text.length === 0 || text[0] !== commandChar) {
-    return false;
-  }
-
-  const startPos = textAreaRef.current?.selectionStart;
-  if (typeof startPos !== 'number') {
-    return false;
-  }
-
-  return startPos === 1 || (startPos === text.length && text.length <= MAX_COMMAND_TRIGGER_LENGTH);
-};
 
 /**
  * Custom hook for handling key up events with command triggers.
@@ -54,9 +44,11 @@ const shouldTriggerCommand = (
 const useHandleKeyUp = ({
   index,
   textAreaRef,
+  triggers = DEFAULT_COMPOSER_TRIGGERS,
 }: {
   index: number;
   textAreaRef: React.RefObject<HTMLTextAreaElement>;
+  triggers?: ComposerTriggers;
 }) => {
   const hasPromptsAccess = useHasAccess({
     permissionType: PermissionTypes.PROMPTS,
@@ -91,59 +83,30 @@ const useHandleKeyUp = ({
     }
   }, [endpoint, setShowPlusPopover, setShowSkillsPopover]);
 
-  const handleAtCommand = useCallback(() => {
-    if (atCommandEnabled && shouldTriggerCommand(textAreaRef, '@')) {
-      setShowMentionPopover(true);
-    }
-  }, [textAreaRef, setShowMentionPopover, atCommandEnabled]);
-
-  const handlePlusCommand = useCallback(() => {
-    if (!hasMultiConvoAccess || !plusCommandEnabled || isAssistantsEndpoint(endpoint)) {
-      return;
-    }
-    if (shouldTriggerCommand(textAreaRef, '+')) {
-      setShowPlusPopover(true);
-    }
-  }, [textAreaRef, setShowPlusPopover, plusCommandEnabled, hasMultiConvoAccess, endpoint]);
-
-  const handlePromptsCommand = useCallback(() => {
-    if (!hasPromptsAccess || !slashCommandEnabled) {
-      return;
-    }
-    if (shouldTriggerCommand(textAreaRef, '/')) {
-      setShowPromptsPopover(true);
-    }
-  }, [textAreaRef, hasPromptsAccess, setShowPromptsPopover, slashCommandEnabled]);
-
-  const handleSkillsCommand = useCallback(() => {
-    if (
-      !hasSkillsAccess ||
-      !skillsEnabled ||
-      !dollarCommandEnabled ||
-      isAssistantsEndpoint(endpoint)
-    ) {
-      return;
-    }
-    if (shouldTriggerCommand(textAreaRef, '$')) {
-      setShowSkillsPopover(true);
-    }
-  }, [
-    textAreaRef,
-    hasSkillsAccess,
-    skillsEnabled,
-    setShowSkillsPopover,
-    dollarCommandEnabled,
-    endpoint,
-  ]);
+  const canAddParallelResponse =
+    hasMultiConvoAccess && plusCommandEnabled && !isAssistantsEndpoint(endpoint);
+  const canPickSkill =
+    hasSkillsAccess && skillsEnabled && dollarCommandEnabled && !isAssistantsEndpoint(endpoint);
+  const canPickPrompt = hasPromptsAccess && slashCommandEnabled;
 
   const commandHandlers = useMemo(
     () => ({
-      '@': handleAtCommand,
-      '+': handlePlusCommand,
-      '/': handlePromptsCommand,
-      $: handleSkillsCommand,
+      [triggers.modelSwitch]: atCommandEnabled ? setShowMentionPopover : undefined,
+      [triggers.parallelResponse]: canAddParallelResponse ? setShowPlusPopover : undefined,
+      [triggers.prompts]: canPickPrompt ? setShowPromptsPopover : undefined,
+      [triggers.skills]: canPickSkill ? setShowSkillsPopover : undefined,
     }),
-    [handleAtCommand, handlePlusCommand, handlePromptsCommand, handleSkillsCommand],
+    [
+      triggers,
+      atCommandEnabled,
+      canAddParallelResponse,
+      canPickPrompt,
+      canPickSkill,
+      setShowMentionPopover,
+      setShowPlusPopover,
+      setShowPromptsPopover,
+      setShowSkillsPopover,
+    ],
   );
 
   const handleUpArrow = useCallback(
@@ -181,11 +144,11 @@ const useHandleKeyUp = ({
         return;
       }
 
-      const firstChar = text[0];
-      const handler = commandHandlers[firstChar as keyof typeof commandHandlers];
-
-      if (typeof handler === 'function') {
-        handler();
+      const startPos = textAreaRef.current?.selectionStart;
+      const afterTrigger = startPos === 1;
+      const afterShortQuery = startPos === text.length && text.length <= MAX_COMMAND_TRIGGER_LENGTH;
+      if (afterTrigger || afterShortQuery) {
+        commandHandlers[text[0]]?.(true);
       }
     },
     [textAreaRef, commandHandlers, handleUpArrow],

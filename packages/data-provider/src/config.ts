@@ -3472,6 +3472,55 @@ export const isAllDataRetention = (mode?: RetentionMode | null): boolean =>
 export const isForcedTemporaryRetention = (mode?: RetentionMode | null): boolean =>
   mode === RetentionMode.EPHEMERAL;
 
+export const DEFAULT_COMPOSER_TRIGGERS = {
+  modelSwitch: '@',
+  parallelResponse: '+',
+  prompts: '/',
+  skills: '$',
+} as const;
+
+export type ComposerTriggers = Record<keyof typeof DEFAULT_COMPOSER_TRIGGERS, string>;
+
+function withComposerTriggerDefaults({
+  modelSwitch = DEFAULT_COMPOSER_TRIGGERS.modelSwitch,
+  parallelResponse = DEFAULT_COMPOSER_TRIGGERS.parallelResponse,
+  prompts = DEFAULT_COMPOSER_TRIGGERS.prompts,
+  skills = DEFAULT_COMPOSER_TRIGGERS.skills,
+}: Partial<ComposerTriggers>): ComposerTriggers {
+  return { modelSwitch, parallelResponse, prompts, skills };
+}
+
+const composerTrigger = z
+  .string()
+  .length(1)
+  .regex(
+    /^[\x21-\x2F\x3A-\x40\x5B-\x60\x7B-\x7E]$/,
+    'Expected a single ASCII punctuation character',
+  )
+  .optional();
+
+const composerTriggersSchema = z
+  .object({
+    modelSwitch: composerTrigger,
+    parallelResponse: composerTrigger,
+    prompts: composerTrigger,
+    skills: composerTrigger,
+  })
+  .strict()
+  .refine((overrides) => {
+    const characters = Object.values(withComposerTriggerDefaults(overrides));
+    return new Set(characters).size === characters.length;
+  }, 'Composer trigger characters must be unique, including inherited defaults');
+
+/** Resolve partial config and guard against collisions after applying config layers. */
+export function resolveComposerTriggers(config?: Partial<ComposerTriggers>): ComposerTriggers {
+  if (config == null) {
+    return DEFAULT_COMPOSER_TRIGGERS;
+  }
+  const result = composerTriggersSchema.safeParse(config);
+  return result.success ? withComposerTriggerDefaults(result.data) : DEFAULT_COMPOSER_TRIGGERS;
+}
+
 export const interfaceSchema = z
   .object({
     theme: deploymentThemeSchema.optional(),
@@ -3738,6 +3787,8 @@ export const interfaceSchema = z
       .positive()
       .max(2_147_483_647)
       .default(DEFAULT_QUEUED_SEND_LOCK_TIMEOUT_MS),
+    /** Characters typed at the start of the chat composer to open its pickers. */
+    composerTriggers: composerTriggersSchema.optional(),
     /** How many recently touched files the composer palette requests and shows
      *  while idle; 0 turns that idle list off. Searching the palette still
      *  finds any of the user's files, since it is the composer's only way to
