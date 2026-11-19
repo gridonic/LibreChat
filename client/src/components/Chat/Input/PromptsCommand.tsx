@@ -53,10 +53,12 @@ const PopoverContainer = memo(
 function PromptsCommand({
   index,
   textAreaRef,
+  commandChar,
   submitPrompt,
 }: {
   index: number;
   textAreaRef: React.MutableRefObject<HTMLTextAreaElement | null>;
+  commandChar?: string;
   submitPrompt: (textPrompt: string) => void;
 }) {
   const localize = useLocalize();
@@ -185,6 +187,7 @@ function PromptsCommand({
     >
       <PromptsPopover
         textAreaRef={textAreaRef}
+        commandChar={commandChar}
         placeholder={localize('com_ui_command_usage_placeholder')}
         prompts={prompts ?? []}
         isLoading={isLoading === true}

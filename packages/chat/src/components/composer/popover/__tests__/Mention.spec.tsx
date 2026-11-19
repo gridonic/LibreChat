@@ -76,6 +76,19 @@ const input = () => screen.getByRole('combobox');
 const activeId = () => input().getAttribute('aria-activedescendant');
 
 describe('MentionPopover through the plain list', () => {
+  it.each([
+    ['mention', '+'],
+    ['add-convo', '@'],
+  ] as const)('keeps %s identity and search with the custom %s trigger', (mode, commandChar) => {
+    const textAreaRef = makeTextarea(commandChar + 'Alp');
+    renderMention({ mode, commandChar, textAreaRef });
+
+    expect(input()).toHaveValue('Alp');
+    expect(screen.getByRole('option')).toHaveTextContent('Alpha');
+    expect(activeId()).toBe(mode + '-item-0');
+    expect(textAreaRef.current?.value).toBe('');
+  });
+
   it('exposes the input as a combobox controlling a listbox of options', () => {
     renderMention();
 

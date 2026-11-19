@@ -32,7 +32,7 @@ const baseState: ComposerHintState = {
   answerModeActive: false,
   uploadingCount: 0,
   enterToSend: true,
-  idleActions: { prompts: true, mentions: true, attach: true },
+  idleActions: { prompts: '/', mentions: '@', attach: true },
 };
 
 function hints(state: Partial<ComposerHintState> = {}, index = 0) {

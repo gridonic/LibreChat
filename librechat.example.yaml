@@ -216,6 +216,13 @@ projects:
 
 # Custom interface configuration
 interface:
+  # Optional text triggers for chat pickers. Each must be a distinct ASCII punctuation character.
+  # Omitted actions use the defaults shown here. Quote the characters in YAML.
+  # composerTriggers:
+  #   modelSwitch: '@'
+  #   parallelResponse: '+'
+  #   prompts: '/'
+  #   skills: '$'
   customWelcome: 'Welcome to LibreChat! Enjoy your experience.'
   # What heads the welcome screen when an agent, assistant or model spec is selected (default: entity).
   # 'entity' shows its name; 'greeting' shows the time-of-day greeting (or customWelcome) with the

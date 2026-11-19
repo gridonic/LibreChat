@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useCombobox } from '@librechat/client';
-import { EModelEndpoint } from 'librechat-data-provider';
+import { EModelEndpoint, DEFAULT_COMPOSER_TRIGGERS } from 'librechat-data-provider';
 import type { KeyboardEvent, MutableRefObject } from 'react';
 import type { CommandOption, CommandDismissReason } from './Command';
 import { removeCharIfLast } from '../../../core/textarea';
@@ -9,8 +9,10 @@ import CommandPopover from './Command';
 
 export interface MentionPopoverProps {
   textAreaRef: MutableRefObject<HTMLTextAreaElement | null>;
-  /** The character that opened the popover; `+` adds a conversation instead of switching. */
+  /** The character that opened the popover. */
   commandChar?: string;
+  /** Whether the picker switches models or adds a parallel response. */
+  mode?: 'mention' | 'add-convo';
   /** Localized placeholder for the search field. */
   placeholder: string;
   options: CommandOption[];
@@ -31,7 +33,10 @@ export interface MentionPopoverProps {
  *  other pick switches the conversation through `onSelectMention`. */
 export default function MentionPopover({
   textAreaRef,
-  commandChar = '@',
+  mode = 'mention',
+  commandChar = mode === 'mention'
+    ? DEFAULT_COMPOSER_TRIGGERS.modelSwitch
+    : DEFAULT_COMPOSER_TRIGGERS.parallelResponse,
   placeholder,
   options,
   isLoading,
@@ -123,7 +128,7 @@ export default function MentionPopover({
 
   return (
     <CommandPopover
-      type={commandChar !== '@' ? 'add-convo' : 'mention'}
+      type={mode}
       placeholder={placeholder}
       inputRef={initInputRef}
       searchValue={searchValue}

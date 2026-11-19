@@ -75,11 +75,13 @@ function SkillsCommandContent({
   index,
   textAreaRef,
   conversationId,
+  commandChar,
   agentId,
 }: {
   index: number;
   textAreaRef: React.MutableRefObject<HTMLTextAreaElement | null>;
   conversationId: string;
+  commandChar?: string;
   agentId?: string | null;
 }) {
   const localize = useLocalize();
@@ -189,6 +191,7 @@ function SkillsCommandContent({
   return (
     <SkillsPopover
       textAreaRef={textAreaRef}
+      commandChar={commandChar}
       placeholder={localize('com_ui_skills_command_placeholder')}
       skills={skillOptions}
       isLoading={isLoading || isFetchingNextPage}
@@ -208,11 +211,13 @@ const SkillsCommand = memo(function SkillsCommand({
   index,
   textAreaRef,
   conversationId,
+  commandChar,
   agentId,
 }: {
   index: number;
   textAreaRef: React.MutableRefObject<HTMLTextAreaElement | null>;
   conversationId: string;
+  commandChar?: string;
   agentId?: string | null;
 }) {
   const show = useAtomValue(showSkillsPopoverFamily(index));
@@ -223,6 +228,7 @@ const SkillsCommand = memo(function SkillsCommand({
     <SkillsCommandContent
       index={index}
       textAreaRef={textAreaRef}
+      commandChar={commandChar}
       conversationId={conversationId}
       agentId={agentId}
     />

@@ -10,6 +10,7 @@ import {
   isForcedTemporaryRetention,
   configSchema,
   balanceSchema,
+  resolveComposerTriggers,
   interfaceSchema,
   fileStorageSchema,
   fileStrategiesSchema,
@@ -1551,6 +1552,40 @@ describe('codeHighlightThrottleMs', () => {
     const example = readFileSync(join(__dirname, '../../../librechat.example.yaml'), 'utf8');
     expect(example).toContain(`(default: ${DEFAULT_CODE_HIGHLIGHT_THROTTLE_MS} ms)`);
     expect(example).toContain(`# codeHighlightThrottleMs: ${DEFAULT_CODE_HIGHLIGHT_THROTTLE_MS}\n`);
+  });
+});
+
+describe('composer triggers', () => {
+  const defaults = { modelSwitch: '@', parallelResponse: '+', prompts: '/', skills: '$' };
+
+  it('resolves the stock bindings without an override', () => {
+    expect(resolveComposerTriggers(interfaceSchema.parse({}).composerTriggers)).toEqual(defaults);
+  });
+
+  it('allows the prompt and skill bindings to be swapped independently of the model pickers', () => {
+    const config = interfaceSchema.parse({ composerTriggers: { prompts: '$', skills: '/' } });
+    expect(config.composerTriggers).toEqual({ prompts: '$', skills: '/' });
+    expect(resolveComposerTriggers(config.composerTriggers)).toEqual({
+      ...defaults,
+      prompts: '$',
+      skills: '/',
+    });
+  });
+
+  it.each([
+    { skills: '/' },
+    { modelSwitch: '!', parallelResponse: '!' },
+    { skills: '!!' },
+    { skills: 'a' },
+    { skills: ' ' },
+    { skills: '!\n' },
+    { skill: '/' },
+  ])('rejects invalid or conflicting bindings: %j', (composerTriggers) => {
+    expect(interfaceSchema.safeParse({ composerTriggers }).success).toBe(false);
+  });
+
+  it('falls back to the stock bindings if layered config introduces a conflict', () => {
+    expect(resolveComposerTriggers({ modelSwitch: '!', skills: '!' })).toEqual(defaults);
   });
 });
 
