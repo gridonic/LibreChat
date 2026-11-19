@@ -113,6 +113,7 @@ export async function loadDefaultInterface({
       defaults.queuedTurnReconciliationTimeoutMs,
     queuedSendLockTimeoutMs:
       interfaceConfig?.queuedSendLockTimeoutMs ?? defaults.queuedSendLockTimeoutMs,
+    composerTriggers: interfaceConfig?.composerTriggers,
     composerRecentFiles: interfaceConfig?.composerRecentFiles ?? defaults.composerRecentFiles,
     historyCacheTtlMs: interfaceConfig?.historyCacheTtlMs ?? defaults.historyCacheTtlMs,
     historyCacheRecent: interfaceConfig?.historyCacheRecent ?? defaults.historyCacheRecent,

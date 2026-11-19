@@ -63,13 +63,14 @@ describe('PromptsPopover', () => {
     expect(input()).toHaveAttribute('aria-activedescendant', 'prompt-item-0');
   });
 
-  it('keeps the text typed after the slash as the search when it opens', () => {
+  it.each(['/', '$'])('keeps the text typed after %s as the search', (commandChar) => {
     const textarea = document.createElement('textarea');
-    textarea.value = '/tra';
+    textarea.value = commandChar + 'tra';
     document.body.appendChild(textarea);
     render(
       <PromptsPopover
         textAreaRef={{ current: textarea }}
+        commandChar={commandChar}
         placeholder="Prompts"
         prompts={prompts}
         isLoading={false}

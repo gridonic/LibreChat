@@ -97,6 +97,7 @@ jest.mock('~/hooks/Messages/useLatestMessage', () => ({
 
 import React from 'react';
 import { renderHook, act } from '@testing-library/react';
+import type { ComposerTriggers } from 'librechat-data-provider';
 import { useGetLatestMessage } from '~/hooks/Messages/useLatestMessage';
 import useHandleKeyUp from './useHandleKeyUp';
 
@@ -117,11 +118,12 @@ const makeKeyEvent = (key: string) =>
 
 const renderUseHandleKeyUp = (
   textAreaRef: React.RefObject<HTMLTextAreaElement>,
-  overrides?: { index?: number },
+  overrides?: { index?: number; triggers?: ComposerTriggers },
 ) => {
   const { result } = renderHook(() =>
     useHandleKeyUp({
       index: overrides?.index ?? 0,
+      triggers: overrides?.triggers,
       textAreaRef,
     }),
   );
@@ -149,6 +151,41 @@ beforeEach(() => {
 });
 
 describe('useHandleKeyUp', () => {
+  describe('custom triggers', () => {
+    const triggers = { modelSwitch: '!', parallelResponse: '?', prompts: '$', skills: '/' };
+    const cases = [
+      ['!', mockSetShowMentionPopover],
+      ['?', mockSetShowPlusPopover],
+      ['$', mockSetShowPromptsPopover],
+      ['/', mockSetShowSkillsPopover],
+    ] as const;
+
+    it.each(cases)('routes %s to its configured picker', (character, target) => {
+      const { handleKeyUp } = renderUseHandleKeyUp(makeTextAreaRef(character + 'abc'), {
+        triggers,
+      });
+      act(() => handleKeyUp(makeKeyEvent('c')));
+      for (const [, setter] of cases) {
+        if (setter === target) {
+          expect(setter).toHaveBeenCalledWith(true);
+        } else {
+          expect(setter).not.toHaveBeenCalled();
+        }
+      }
+    });
+
+    it('keeps the prompt toggle and skills permission tied to their actions', () => {
+      mockCommandToggles.slash = false;
+      mockHasSkillsAccess.current = false;
+      for (const character of [triggers.prompts, triggers.skills]) {
+        const { handleKeyUp } = renderUseHandleKeyUp(makeTextAreaRef(character), { triggers });
+        act(() => handleKeyUp(makeKeyEvent(character)));
+      }
+      expect(mockSetShowPromptsPopover).not.toHaveBeenCalled();
+      expect(mockSetShowSkillsPopover).not.toHaveBeenCalled();
+    });
+  });
+
   describe('command triggering — normal typing speed (cursor at position 1)', () => {
     it('triggers slash command for "/" at position 1', () => {
       const ref = makeTextAreaRef('/', 1);

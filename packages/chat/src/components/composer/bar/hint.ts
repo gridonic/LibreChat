@@ -41,10 +41,8 @@ export interface ComposerHintState {
   /** Plain Enter submits. When off, Enter inserts a newline and the modifier
    *  chord is what submits, which inverts every shortcut named below. */
   enterToSend: boolean;
-  /** Which idle affordances act right now: `/` opens prompts, `@` opens the
-   *  model mention, `+` attaches. The host resolves them from the same settings,
-   *  permissions and attach target the composer obeys. */
-  idleActions: { prompts: boolean; mentions: boolean; attach: boolean };
+  /** Effective prompt and model triggers, plus availability of the attachment button. */
+  idleActions: { prompts: string | false; mentions: string | false; attach: boolean };
 }
 
 /**
@@ -190,9 +188,9 @@ export function composeHint(
 
   const { prompts, mentions, attach } = state.idleActions;
   const idle = [
-    prompts && localize('com_ui_composer_hint_prompts'),
-    mentions && localize('com_ui_composer_hint_mentions'),
-    attach && localize('com_ui_composer_hint_attach'),
+    prompts && localize('com_ui_composer_hint_prompt_trigger', { 0: prompts }),
+    mentions && localize('com_ui_composer_hint_model_trigger', { 0: mentions }),
+    attach && localize('com_ui_composer_hint_attach_button'),
   ].filter((part): part is string => typeof part === 'string');
   return { text: idle.join(SEPARATOR), kind: 'tip' };
 }

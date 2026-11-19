@@ -1,11 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { useCombobox } from '@librechat/client';
+import { DEFAULT_COMPOSER_TRIGGERS } from 'librechat-data-provider';
 import type { KeyboardEvent, MutableRefObject } from 'react';
 import type { CommandOption, CommandDismissReason } from './Command';
 import useInitPopoverInput from '../../../react/popover';
 import CommandPopover from './Command';
-
-const COMMAND_CHAR = '$';
 
 /** Localized messages the skills popover shows in place of a list. */
 export interface SkillsPopoverNotices {
@@ -19,6 +18,7 @@ export interface SkillsPopoverNotices {
 
 export interface SkillsPopoverProps {
   textAreaRef: MutableRefObject<HTMLTextAreaElement | null>;
+  commandChar?: string;
   /** Localized placeholder for the search field. */
   placeholder: string;
   skills: CommandOption[];
@@ -32,10 +32,11 @@ export interface SkillsPopoverProps {
   onClose: () => void;
 }
 
-/** The `$` popover: picks a skill to invoke on the next turn. Text typed after the `$` stays in
+/** The skills popover: picks a skill to invoke on the next turn. Text typed after the trigger stays in
  *  the draft, and the pick is handed to the host rather than written into the text. */
 export default function SkillsPopover({
   textAreaRef,
+  commandChar = DEFAULT_COMPOSER_TRIGGERS.skills,
   placeholder,
   skills,
   isLoading,
@@ -55,7 +56,7 @@ export default function SkillsPopover({
   const initInputRef = useInitPopoverInput({
     inputRef,
     textAreaRef,
-    commandChar: COMMAND_CHAR,
+    commandChar,
     preserveTextAfterCursor: true,
     setSearchValue,
     setOpen,

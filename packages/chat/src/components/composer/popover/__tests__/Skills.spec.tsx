@@ -54,8 +54,11 @@ const renderSkills = (props: Partial<SkillsPopoverProps> = {}, draft = '$') => {
 const input = () => screen.getByRole('combobox');
 
 describe('SkillsPopover', () => {
-  it('keeps the text after the cursor in the draft and hands the pick to the host', () => {
-    const { textarea, onClose, onSelectSkill } = renderSkills({}, '$ please review');
+  it.each(['$', '/'])('keeps the draft and stages a skill picked through %s', (commandChar) => {
+    const { textarea, onClose, onSelectSkill } = renderSkills(
+      { commandChar },
+      commandChar + ' please review',
+    );
 
     expect(textarea.value).toBe(' please review');
     fireEvent.keyDown(input(), { key: 'ArrowDown' });

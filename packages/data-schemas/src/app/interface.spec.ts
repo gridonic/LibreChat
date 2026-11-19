@@ -103,6 +103,16 @@ describe('loadDefaultInterface', () => {
     expect(configuredInterface?.queuedSendLockTimeoutMs).toBe(15_000);
   });
 
+  it('forwards configured composer trigger overrides to the served interface', async () => {
+    const composerTriggers = { prompts: '$', skills: '/' };
+    const interfaceConfig = await loadDefaultInterface({
+      config: { interface: { composerTriggers } },
+      configDefaults: getConfigDefaults(),
+    });
+
+    expect(interfaceConfig?.composerTriggers).toEqual(composerTriggers);
+  });
+
   it('uses and preserves the schema default for the composer recent-files limit', async () => {
     const configDefaults = getConfigDefaults();
     const defaultInterface = await loadDefaultInterface({
